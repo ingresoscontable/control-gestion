@@ -41,6 +41,11 @@ Al arrancar verás algo así:
 Deja esa ventana abierta: mientras esté abierta, el sistema está disponible.
 Si Windows pregunta por el acceso a la red, marca **Redes privadas** y acepta.
 
+**¿Prefieres no dejar la ventana abierta?** Doble clic en **`iniciar-oculto.vbs`**:
+el servidor queda corriendo en segundo plano, sin ninguna ventana visible
+(aparece un mensaje de confirmación y ya). Para detenerlo, doble clic en
+**`detener.bat`**. El sistema sigue disponible para las demás PC mientras esté corriendo.
+
 ### Primer ingreso
 
 | Usuario | PIN  |
@@ -155,7 +160,9 @@ call ".venv\Scripts\python.exe" main.py
 control-gestion/
 ├── main.py                 # arranque del servidor
 ├── instalar.bat            # instalación en Windows
-├── iniciar.bat             # arranque en Windows
+├── iniciar.bat             # arranque en Windows (con ventana)
+├── iniciar-oculto.vbs      # arranque en segundo plano (sin ventana)
+├── detener.bat             # detiene el servidor en segundo plano
 ├── abrir-firewall.bat      # abre el puerto en la red local (admin)
 ├── app/
 │   ├── main.py             # rutas y lógica

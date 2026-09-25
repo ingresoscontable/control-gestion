@@ -1,0 +1,33 @@
+{# Tarjeta de una meta con su barra de avance. Espera la variable `fila`. #}
+<div class="meta-card">
+  <div class="meta-cabecera">
+    <strong>{{ fila.meta.titulo }}</strong>
+    <span class="avance-num {{ fila.nivel }}">{{ fila.avance }}%</span>
+  </div>
+
+  {% if fila.meta.descripcion %}
+  <p class="muted small">{{ fila.meta.descripcion }}</p>
+  {% endif %}
+
+  <div class="barra {{ fila.nivel }}" title="{{ fila.avance }}%">
+    <span style="width: {{ fila.avance }}%"></span>
+  </div>
+
+  <div class="meta-datos">
+    <span><strong>{{ fila.reportes }}</strong> reporte(s)</span>
+    <span>
+      <strong>{{ '%.1f'|format(fila.horas) }}</strong> h
+      {%- if fila.meta.horas_estimadas %} de {{ '%.0f'|format(fila.meta.horas_estimadas) }} h{% endif %}
+    </span>
+    <span><strong>{{ fila.completados }}</strong> completado(s)</span>
+    <span>{{ fila.meta.asignado.nombre if fila.meta.asignado else 'Todo el equipo' }}</span>
+    {% if fila.meta.fecha_limite %}
+    <span class="{{ 'plazo-vencido' if fila.meta.estado == 'activa' and fila.meta.fecha_limite < hoy }}">
+      plazo {{ fila.meta.fecha_limite.strftime('%d/%m/%Y') }}
+    </span>
+    {% endif %}
+    {% if fila.meta.estado == 'cerrada' %}
+    <span class="muted">cerrada</span>
+    {% endif %}
+  </div>
+</div>

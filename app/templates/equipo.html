@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block titulo %}Equipo · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Equipo</h1>
+<p class="sub">Crea los accesos de tus colaboradores y reinicia su PIN cuando lo olviden.</p>
+
+<section class="card">
+  <h2>Agregar persona</h2>
+  <form method="post" action="/equipo" class="form-grid">
+    <label>
+      Nombre completo
+      <input type="text" name="nombre" placeholder="Ej: María Pérez" required>
+    </label>
+    <label>
+      Usuario para entrar (sin espacios)
+      <input type="text" name="usuario" placeholder="Ej: mperez" required>
+    </label>
+    <label>
+      Cargo (opcional)
+      <input type="text" name="cargo" placeholder="Ej: Analista contable">
+    </label>
+    <label>
+      PIN numérico (4 a 10 dígitos)
+      <input type="text" name="pin" inputmode="numeric" placeholder="Ej: 4821" required>
+    </label>
+    <label>
+      Rol
+      <select name="rol">
+        <option value="empleado">Empleado</option>
+        <option value="jefe">Jefe (ve todo y administra)</option>
+      </select>
+    </label>
+    <div class="full">
+      <button type="submit" class="btn primary">Crear acceso</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Personas</h2>
+  <table class="tabla">
+    <thead>
+      <tr><th>Nombre</th><th>Usuario</th><th>Cargo</th><th>Rol</th><th>Estado</th><th>Reiniciar PIN</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for u in equipo %}
+      <tr class="{{ '' if u.activo else 'cerrada' }}">
+        <td><a href="/personas/{{ u.id }}">{{ u.nombre }}</a></td>
+        <td><code>{{ u.usuario }}</code></td>
+        <td>{{ u.cargo or '—' }}</td>
+        <td>{{ 'Jefe' if u.es_jefe else 'Empleado' }}</td>
+        <td><span class="badge {{ 'completado' if u.activo else 'bloqueado' }}">{{ 'activo' if u.activo else 'inactivo' }}</span></td>
+        <td>
+          <form method="post" action="/equipo/{{ u.id }}/pin" class="inline">
+            <input type="text" name="pin" inputmode="numeric" placeholder="nuevo PIN" required>
+            <button type="submit" class="link">Guardar</button>
+          </form>
+        </td>
+        <td>
+          {% if u.id != usuario.id %}
+          <form method="post" action="/equipo/{{ u.id }}/activo">
+            <button type="submit" class="link">{{ 'Desactivar' if u.activo else 'Activar' }}</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% endblock %}

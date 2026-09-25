@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrar · {{ APP_NAME }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+  <div class="login-card">
+    <h1>{{ APP_NAME }}</h1>
+    <p class="sub">Control de metas y registro diario de trabajo</p>
+
+    {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+    <form method="post" action="/login">
+      <label>
+        Usuario
+        <input type="text" name="usuario" value="{{ usuario_input or '' }}" autocomplete="username" autofocus required>
+      </label>
+      <label>
+        PIN
+        <input type="password" name="pin" inputmode="numeric" autocomplete="current-password" required>
+      </label>
+      <button type="submit" class="btn primary full">Entrar</button>
+    </form>
+
+    <p class="hint">¿Olvidaste tu PIN? Pídele al jefe que lo reinicie desde <strong>Equipo</strong>.</p>
+  </div>
+</body>
+</html>

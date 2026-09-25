@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block titulo %}Progreso · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Progreso de metas</h1>
+<p class="sub">Avance calculado con las horas y los reportes que carga el equipo.</p>
+
+<section class="card">
+  <div class="stats">
+    <div class="stat">
+      <span class="stat-num">{{ total }}</span>
+      <span class="stat-label">meta(s) en vista</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">{{ promedio }}%</span>
+      <span class="stat-label">avance promedio</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">{{ '%.1f'|format(horas_acumuladas) }}</span>
+      <span class="stat-label">horas registradas{% if horas_estimadas %} de {{ '%.0f'|format(horas_estimadas) }} previstas{% endif %}</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">{{ total_reportes }}</span>
+      <span class="stat-label">reportes asociados</span>
+    </div>
+  </div>
+
+  <div class="filtros-botones">
+    <a class="btn {{ 'primary' if ver == 'activas' else 'ghost' }}" href="/metas/progreso?ver=activas">Solo activas</a>
+    <a class="btn {{ 'primary' if ver == 'todas' else 'ghost' }}" href="/metas/progreso?ver=todas">Todas</a>
+  </div>
+</section>
+
+{% if filas %}
+  {% for fila in filas %}
+  {% include "_meta_progreso.html" %}
+  {% endfor %}
+{% else %}
+<section class="card">
+  <p class="muted">No hay metas para mostrar. Podés <a href="/metas">crear una</a>.</p>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Cómo se calcula el avance</h2>
+  <ul class="pasos">
+    <li>Si la meta tiene <strong>horas estimadas</strong>, el avance son las horas registradas sobre esas horas previstas.</li>
+    <li>Si no las tiene, el avance es la proporción de reportes marcados como <strong>completados</strong>.</li>
+    <li>Una meta <strong>cerrada</strong> por vos cuenta como 100%.</li>
+    <li>Todos los reportes del equipo que apunten a esa meta suman, sin importar la fecha.</li>
+  </ul>
+</section>
+
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block titulo %}Ayuda · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Cómo entrar desde otra PC</h1>
+<p class="sub">La aplicación corre en una sola computadora de la oficina; las demás entran por la red local.</p>
+
+<section class="card">
+  <h2>Link para el equipo</h2>
+  {% if ips %}
+  <p>Desde cualquier PC conectada a la misma red, abre en el navegador:</p>
+  <ul class="links">
+    {% for ip in ips %}
+    <li><code>http://{{ ip }}:{{ puerto }}</code></li>
+    {% endfor %}
+  </ul>
+  <p class="muted small">
+    Comparte el que corresponda a la red de la oficina (normalmente uno empieza con 192.168.).
+    Si ninguna funciona, revisa la regla de firewall indicada abajo.
+  </p>
+  {% else %}
+  <p class="muted">No se detectó una IP de red local. Verifica que la PC esté conectada a la red de la oficina.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>En Windows 10: permitir el acceso</h2>
+  <ol class="pasos">
+    <li>La primera vez que arranques el sistema, Windows preguntará si permites el acceso a la red: marca <strong>Redes privadas</strong> y acepta.</li>
+    <li>Si no apareció el aviso, abre el menú Inicio, escribe <strong>cmd</strong>, haz clic derecho y elige <strong>Ejecutar como administrador</strong>, y ejecuta:
+      <pre>netsh advfirewall firewall add rule name="Control de Gestion" dir=in action=allow protocol=TCP localport={{ puerto }}</pre>
+    </li>
+    <li>Verifica que la PC y el resto estén en la <strong>misma red</strong> y que la red esté marcada como <strong>Privada</strong> (Configuración → Red e Internet → Ethernet/Wi-Fi).</li>
+  </ol>
+</section>
+
+<section class="card">
+  <h2>Cambiar mi PIN</h2>
+  <form method="post" action="/mi-pin" class="form-grid">
+    <label>
+      PIN actual
+      <input type="password" name="pin_actual" inputmode="numeric" required>
+    </label>
+    <label>
+      PIN nuevo (4 a 10 dígitos)
+      <input type="password" name="pin_nuevo" inputmode="numeric" required>
+    </label>
+    <div class="full">
+      <button type="submit" class="btn primary">Actualizar PIN</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Respaldos</h2>
+  <p class="muted">
+    Toda la información vive en un solo archivo:
+    <code>data\control.db</code> dentro de la carpeta del sistema.
+    Copiarlo a un pendrive o a una carpeta de respaldo es suficiente para no perder nada.
+  </p>
+</section>
+
+{% endblock %}

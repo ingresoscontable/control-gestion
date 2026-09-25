@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}{{ APP_NAME }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  {% if usuario %}
+  <header class="topbar">
+    <div class="brand">{{ APP_NAME }}</div>
+    <nav>
+      <a href="/">Panel</a>
+      <a href="/guia">Guía</a>
+      {% if usuario.es_jefe %}
+        <a href="/metas">Metas</a>
+        <a href="/metas/progreso">Progreso</a>
+        <a href="/registros">Registros</a>
+        <a href="/equipo">Equipo</a>
+        <a href="/respaldos">Respaldos</a>
+      {% endif %}
+      <a href="/ayuda">Ayuda</a>
+    </nav>
+    <div class="userbox">
+      <span class="who">{{ usuario.nombre }} · {{ 'Jefe' if usuario.es_jefe else 'Empleado' }}</span>
+      <form method="post" action="/logout">
+        <button type="submit" class="link">Salir</button>
+      </form>
+    </div>
+  </header>
+  {% endif %}
+
+  <main class="container">
+    {% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+    {% block contenido %}{% endblock %}
+  </main>
+
+  <footer class="pie">
+    Sistema interno · uso en red local · {{ hoy.strftime('%d/%m/%Y') }}
+  </footer>
+</body>
+</html>

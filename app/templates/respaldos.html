@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block titulo %}Respaldos · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Respaldos</h1>
+<p class="sub">Copias de seguridad de la base de datos, hechas automáticamente y a pedido.</p>
+
+<div class="grid">
+  <section class="card">
+    <h2>Estado</h2>
+    <p>
+      Se hace un respaldo <strong>cada {{ horas }} hora(s)</strong>, además de uno cada vez
+      que se arranca el sistema. Se conservan los últimos <strong>{{ conservar }}</strong>
+      y los más viejos se borran solos.
+    </p>
+    <p class="muted small">
+      Base de datos: <code>{{ archivo_base }}</code><br>
+      Carpeta de respaldos: <code>{{ carpeta }}</code>
+    </p>
+    <form method="post" action="/respaldos/ahora">
+      <button type="submit" class="btn primary">Hacer un respaldo ahora</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Cómo funciona</h2>
+    <ul class="pasos">
+      <li>La copia se hace con la API de SQLite, así que sale consistente aunque alguien esté cargando datos.</li>
+      <li>Para guardar los respaldos en otro lado (pendrive, carpeta de red) define la variable
+        <code>CG_BACKUP_DIR</code> antes de arrancar. Ejemplo en <code>iniciar.bat</code>:
+        <pre>set CG_BACKUP_DIR=D:\Respaldos\ControlGestion</pre>
+      </li>
+      <li>Para cambiar la frecuencia usa <code>CG_BACKUP_HORAS</code> y para cuántos conservar,
+        <code>CG_BACKUP_CONSERVAR</code>.</li>
+    </ul>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Respaldos existentes ({{ respaldos|length }})</h2>
+  {% if respaldos %}
+  <table class="tabla">
+    <thead>
+      <tr><th>Archivo</th><th>Fecha</th><th>Tamaño</th><th>Ubicación</th></tr>
+    </thead>
+    <tbody>
+      {% for item in respaldos %}
+      <tr>
+        <td>{{ item.nombre }}</td>
+        <td>{{ item.fecha.strftime('%d/%m/%Y %H:%M') }}</td>
+        <td>{{ '%.0f'|format(item.tamano_kb) }} KB</td>
+        <td class="muted small">{{ item.ruta.parent }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Todavía no hay respaldos. Se crea uno al arrancar el sistema.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

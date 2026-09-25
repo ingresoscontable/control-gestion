@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block titulo %}Editar meta · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Editar meta</h1>
+<p class="sub">
+  Los cambios se ven al instante en el panel del equipo y en el avance.
+  <a href="/metas">Volver a metas</a>
+</p>
+
+<section class="card">
+  <form method="post" action="/metas/{{ meta.id }}" class="form-grid">
+    <label class="full">
+      Título
+      <input type="text" name="titulo" value="{{ meta.titulo }}" required>
+    </label>
+
+    <label class="full">
+      Descripción (opcional)
+      <textarea name="descripcion" rows="2">{{ meta.descripcion or '' }}</textarea>
+    </label>
+
+    <label>
+      Asignada a
+      <select name="asignado_a">
+        <option value="">Todo el equipo</option>
+        {% for u in equipo %}
+        <option value="{{ u.id }}" {% if meta.asignado_a == u.id %}selected{% endif %}>
+          {{ u.nombre }}{% if u.cargo %} ({{ u.cargo }}){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>
+      Inicio (opcional)
+      <input type="date" name="fecha_inicio"
+             value="{{ meta.fecha_inicio.isoformat() if meta.fecha_inicio else '' }}">
+    </label>
+
+    <label>
+      Fecha límite (opcional)
+      <input type="date" name="fecha_limite"
+             value="{{ meta.fecha_limite.isoformat() if meta.fecha_limite else '' }}">
+    </label>
+
+    <label>
+      Horas estimadas (opcional)
+      <input type="number" name="horas_estimadas" min="0" step="1"
+             value="{{ '%.0f'|format(meta.horas_estimadas or 0) }}">
+    </label>
+
+    <label>
+      Estado
+      <select name="estado">
+        <option value="activa" {% if meta.estado == 'activa' %}selected{% endif %}>Activa</option>
+        <option value="cerrada" {% if meta.estado == 'cerrada' %}selected{% endif %}>Cerrada</option>
+      </select>
+    </label>
+
+    <label>
+      Avance actual
+      <input type="text" value="{{ progreso.avance if progreso else 0 }}% · {{ progreso.reportes if progreso else 0 }} reporte(s)" disabled>
+    </label>
+
+    <div class="full">
+      <button type="submit" class="btn primary">Guardar cambios</button>
+      <a class="btn ghost" href="/metas">Cancelar</a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Registros asociados</h2>
+  {% if registros %}
+  <table class="tabla">
+    <thead><tr><th>Fecha</th><th>Persona</th><th>Qué hizo</th><th>Horas</th><th>Estado</th></tr></thead>
+    <tbody>
+      {% for r in registros %}
+      <tr>
+        <td>{{ r.fecha.strftime('%d/%m/%Y') }}</td>
+        <td>{{ r.usuario.nombre }}</td>
+        <td class="desc">{{ r.descripcion }}</td>
+        <td>{{ '%.1f'|format(r.horas) }}</td>
+        <td><span class="badge {{ r.estado }}">{{ r.estado.replace('_', ' ') }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Todavía nadie cargó reportes contra esta meta.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

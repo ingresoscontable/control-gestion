@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block titulo %}Guía · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Guía rápida</h1>
+<p class="sub">Todo lo que necesitas para usar el sistema, en una página.</p>
+
+<div class="grid">
+  <section class="card">
+    <h2>1. Entrar</h2>
+    <ol class="pasos">
+      <li>Abre el navegador (Chrome o Edge) en tu PC.</li>
+      <li>Escribe esta dirección:
+        {% if direcciones %}
+        <ul class="links">
+          {% for direccion in direcciones %}<li><code>{{ direccion }}</code></li>{% endfor %}
+        </ul>
+        {% else %}
+        <code>http://&lt;ip-de-la-pc-del-servidor&gt;:8000</code>
+        {% endif %}
+      </li>
+      <li>Guárdala en favoritos: es siempre la misma.</li>
+      <li>Entra con el <strong>usuario</strong> y el <strong>PIN</strong> que te dio el jefe.</li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2>2. Registrar lo que hiciste</h2>
+    <ol class="pasos">
+      <li>En el <strong>Panel</strong>, completa el formulario <em>Registrar trabajo del día</em>.</li>
+      <li>Elige la <strong>meta</strong> en la que trabajaste (o déjala en "sin meta específica").</li>
+      <li>Escribe <strong>qué hiciste</strong>, con tus palabras. Cuanto más concreto, mejor.</li>
+      <li>Pon las <strong>horas</strong> dedicadas y el <strong>estado</strong>.</li>
+      <li>Guardar. Listo: queda en tu historial.</li>
+    </ol>
+    <p class="muted small">
+      Cárgalo el mismo día. Si te olvidaste de uno, cambia la fecha y guárdalo igual.
+    </p>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Estados: ¿cuál elijo?</h2>
+  <table class="tabla">
+    <thead><tr><th>Estado</th><th>Cuándo usarlo</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="badge en_progreso">en progreso</span></td>
+        <td>Avanzaste, pero la tarea todavía no terminó.</td>
+      </tr>
+      <tr>
+        <td><span class="badge completado">completado</span></td>
+        <td>Terminaste esa tarea hoy. Es el estado que hace subir el avance.</td>
+      </tr>
+      <tr>
+        <td><span class="badge bloqueado">bloqueado</span></td>
+        <td>No pudiste seguir: falta un dato, una respuesta o un documento.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h2>Lo demás que vas a ver</h2>
+  <ul class="pasos">
+    <li><strong>Mis metas y su avance</strong>: la barra se llena con las horas que registras
+      (si la meta tiene horas estimadas) o con los reportes que marcas como completados.</li>
+    <li><strong>Comentario del jefe</strong>: si aparece un recuadro amarillo debajo de uno de tus
+      reportes, es una observación tuya. No se puede editar, es solo para que lo leas.</li>
+    <li><strong>Aviso de plazo vencido</strong>: si aparece en rojo arriba de tu panel, alguna de
+      tus metas pasó la fecha límite.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>Si algo no funciona</h2>
+  <ol class="pasos">
+    <li><strong>La página no abre.</strong> Revisa que estés en la misma red de la oficina y que
+      la PC del servidor esté encendida con su ventana abierta.</li>
+    <li><strong>Olvidaste el PIN.</strong> El jefe te lo reinicia desde <em>Equipo</em> en un minuto.</li>
+    <li><strong>Te equivocaste en un reporte.</strong> Bórralo con <em>Eliminar</em> y vuelve a cargarlo.</li>
+    <li><strong>El navegador te avisa de la conexión.</strong> Es normal: el sistema es interno,
+      sin certificado de seguridad. Continúa.</li>
+  </ol>
+</section>
+
+<section class="card">
+  <h2>Cambiar mi PIN</h2>
+  <p class="muted small">También puedes hacerlo desde <a href="/ayuda">Ayuda</a>.</p>
+  <form method="post" action="/mi-pin" class="form-grid">
+    <label>
+      PIN actual
+      <input type="password" name="pin_actual" inputmode="numeric" required>
+    </label>
+    <label>
+      PIN nuevo (4 a 10 dígitos)
+      <input type="password" name="pin_nuevo" inputmode="numeric" required>
+    </label>
+    <div class="full">
+      <button type="submit" class="btn primary">Actualizar PIN</button>
+    </div>
+  </form>
+</section>
+
+{% endblock %}

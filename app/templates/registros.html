@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block titulo %}Registros · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Registros del equipo</h1>
+<p class="sub">Historial de lo que se reporta cada día.</p>
+
+<section class="card">
+  <form method="get" action="/registros" class="filtros">
+    <label>
+      Persona
+      <select name="usuario_id">
+        <option value="">Todos</option>
+        {% for u in equipo %}
+        <option value="{{ u.id }}" {% if filtros.usuario_id == u.id %}selected{% endif %}>{{ u.nombre }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Desde
+      <input type="date" name="desde" value="{{ filtros.desde.isoformat() if filtros.desde else '' }}">
+    </label>
+    <label>
+      Hasta
+      <input type="date" name="hasta" value="{{ filtros.hasta.isoformat() if filtros.hasta else '' }}">
+    </label>
+    <div class="filtros-botones">
+      <button type="submit" class="btn primary">Filtrar</button>
+      <a class="btn ghost" href="/registros">Limpiar</a>
+      <a class="btn ghost"
+         href="/registros/exportar.xlsx{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+        Exportar a Excel
+      </a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Reporte mensual en PDF</h2>
+  <form method="get" action="/reportes/mensual.pdf" class="filtros">
+    <label>
+      Mes
+      <select name="mes">
+        {% for numero in range(1, 13) %}
+        <option value="{{ numero }}" {% if numero == hoy.month %}selected{% endif %}>{{ meses[numero - 1] }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Año
+      <input type="number" name="anio" value="{{ hoy.year }}" min="2000" max="2100">
+    </label>
+    <div class="filtros-botones">
+      <button type="submit" class="btn primary">Descargar PDF</button>
+    </div>
+  </form>
+  <p class="muted small">
+    Incluye el resumen general del mes, el resumen por persona, las metas del
+    periodo y el detalle de los reportes diarios.
+  </p>
+</section>
+
+<section class="card">
+  <h2>{{ registros|length }} registro(s) · {{ '%.1f'|format(total_horas) }} horas acumuladas</h2>
+  {% if registros %}
+  <table class="tabla">
+    <thead>
+      <tr><th>Fecha</th><th>Persona</th><th>Meta</th><th>Qué hizo</th><th>Horas</th><th>Estado</th><th>Comentario del jefe</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for r in registros %}
+      <tr>
+        <td>{{ r.fecha.strftime('%d/%m/%Y') }}</td>
+        <td><a href="/personas/{{ r.usuario.id }}">{{ r.usuario.nombre }}</a></td>
+        <td>{{ r.meta.titulo if r.meta else '—' }}</td>
+        <td class="desc">{{ r.descripcion }}</td>
+        <td>{{ '%.1f'|format(r.horas) }}</td>
+        <td><span class="badge {{ r.estado }}">{{ r.estado.replace('_', ' ') }}</span></td>
+        <td class="comentario">
+          {% if r.comentario %}
+            <div class="comentario-texto">{{ r.comentario }}</div>
+            {% if r.comentado_en %}
+            <div class="muted small">{{ r.comentado_en.strftime('%d/%m/%Y %H:%M') }}</div>
+            {% endif %}
+          {% endif %}
+          <form method="post" action="/registros/{{ r.id }}/comentario" class="inline">
+            <input type="hidden" name="volver" value="/registros">
+            <input type="text" name="comentario" value="{{ r.comentario or '' }}" placeholder="Observación...">
+            <button type="submit" class="link">Guardar</button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="/registros/{{ r.id }}/eliminar"
+                onsubmit="return confirm('¿Eliminar este registro?')">
+            <input type="hidden" name="volver" value="/registros">
+            <button type="submit" class="link danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No hay registros con esos filtros.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

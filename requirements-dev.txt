@@ -1,0 +1,5 @@
+-r requirements.txt
+
+# Solo para correr las pruebas
+pytest==8.3.4
+httpx==0.28.1

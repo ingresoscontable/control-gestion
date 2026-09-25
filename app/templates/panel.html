@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block titulo %}Panel · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Hola, {{ usuario.nombre.split(' ')[0] }}</h1>
+<p class="sub">Hoy es {{ hoy.strftime('%d/%m/%Y') }}</p>
+
+{% if vencidas %}
+<div class="alerta vencida">
+  <strong>
+    {{ vencidas|length }} meta(s) con el plazo vencido
+    {% if not usuario.es_jefe %}entre las tuyas{% endif %}:
+  </strong>
+  <div class="vencidas-lista">
+    {% for item in vencidas %}
+    <span class="pill warn">
+      {{ item.meta.titulo }}
+      · {{ item.dias }} día(s) de atraso
+      {%- if usuario.es_jefe and item.meta.asignado %} · {{ item.meta.asignado.nombre }}{% endif %}
+    </span>
+    {% endfor %}
+  </div>
+  {% if usuario.es_jefe %}
+  <p class="small">Puedes ajustar el plazo o cerrar la meta desde <a href="/metas">Metas</a>.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="grid">
+  <section class="card">
+    <h2>Registrar trabajo del día</h2>
+    <form method="post" action="/registros" class="form-grid">
+      <label class="full">
+        ¿En qué meta trabajaste?
+        <select name="meta_id">
+          <option value="">— Sin meta específica —</option>
+          {% for m in mis_metas %}
+          <option value="{{ m.id }}">{{ m.titulo }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label class="full">
+        Qué hiciste hoy
+        <textarea name="descripcion" rows="3" placeholder="Ej: Concilié las cuentas por cobrar de septiembre..." required></textarea>
+      </label>
+
+      <label>
+        Fecha
+        <input type="date" name="fecha" value="{{ hoy.isoformat() }}">
+      </label>
+
+      <label>
+        Horas dedicadas
+        <input type="number" name="horas" value="0" min="0" max="24" step="0.5">
+      </label>
+
+      <label>
+        Estado
+        <select name="estado">
+          {% for clave, etiqueta in estados_registro %}
+          <option value="{{ clave }}">{{ etiqueta }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <div class="full">
+        <button type="submit" class="btn primary">Guardar registro</button>
+      </div>
+    </form>
+  </section>
+
+  {% if usuario.es_jefe %}
+  <section class="card">
+    <h2>Resumen de hoy</h2>
+    <p class="muted">
+      {{ registros_hoy|length }} registro(s) cargado(s) hoy ·
+      {{ equipo|length }} persona(s) activas
+    </p>
+
+    {% if registrar_hoy %}
+    <div class="alerta">
+      <strong>Sin registrar hoy:</strong>
+      {% for u in registrar_hoy %}<span class="pill warn">{{ u.nombre }}</span>{% endfor %}
+    </div>
+    {% else %}
+    <div class="alerta ok"><strong>Todo el equipo registró hoy.</strong></div>
+    {% endif %}
+
+    <h3>Metas activas</h3>
+    {% if metas_activas %}
+    <table class="tabla">
+      <thead><tr><th>Meta</th><th>Asignada</th><th>Límite</th><th>Avance</th></tr></thead>
+      <tbody>
+        {% for m in metas_activas %}
+        {% set p = progreso.get(m.id) %}
+        <tr>
+          <td>{{ m.titulo }}</td>
+          <td>{{ m.asignado.nombre if m.asignado else 'Todo el equipo' }}</td>
+          <td>{{ m.fecha_limite.strftime('%d/%m/%Y') if m.fecha_limite else '—' }}</td>
+          <td class="celda-avance">
+            <div class="barra {{ p.nivel if p else 'baja' }}">
+              <span style="width: {{ p.avance if p else 0 }}%"></span>
+            </div>
+            <span class="avance-num {{ p.nivel if p else 'baja' }}">{{ p.avance if p else 0 }}%</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Todavía no hay metas activas. <a href="/metas">Crear una meta</a>.</p>
+    {% endif %}
+  </section>
+  {% else %}
+  <section class="card">
+    <h2>Mis metas y su avance</h2>
+    {% if progreso_usuario %}
+      {% for fila in progreso_usuario %}
+      {% include "_meta_progreso.html" %}
+      {% endfor %}
+    {% else %}
+      <p class="muted">Todavía no tenés metas asignadas.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+
+{% if usuario.es_jefe %}
+<section class="card">
+  <h2>Resumen de la semana · {{ semana_inicio.strftime('%d/%m') }} al {{ semana_fin.strftime('%d/%m/%Y') }}</h2>
+  <table class="tabla">
+    <thead>
+      <tr><th>Persona</th><th>Registros</th><th>Días con registro</th><th>Horas</th><th>Cumplimiento</th></tr>
+    </thead>
+    <tbody>
+      {% for fila in resumen_semana %}
+      <tr>
+        <td>
+          {{ fila.usuario.nombre }}
+          {% if fila.usuario.cargo %}<div class="muted small">{{ fila.usuario.cargo }}</div>{% endif %}
+        </td>
+        <td>{{ fila.registros }}</td>
+        <td>{{ fila.dias }} de 5</td>
+        <td>{{ '%.1f'|format(fila.horas) }}</td>
+        <td>
+          {% if fila.dias >= 5 %}<span class="badge completado">al día</span>
+          {% elif fila.dias >= 3 %}<span class="badge en_progreso">parcial</span>
+          {% else %}<span class="badge bloqueado">sin reportar</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">
+    Cuenta los reportes cargados de lunes a domingo de la semana en curso.
+    La referencia de cumplimiento son 5 días laborables por persona.
+  </p>
+</section>
+{% endif %}
+
+{% if grafico %}
+<section class="card">
+  <h2>Horas por semana · últimas {{ grafico.bloques|length }}</h2>
+  {% if grafico.hay_datos %}
+  <div class="grafico">
+    {% for bloque in grafico.bloques %}
+    <div class="semana {{ 'actual' if bloque.actual }}">
+      <div class="total">{{ '%.0f'|format(bloque.total) }} h</div>
+      <div class="cols">
+        {% for barra in bloque.barras %}
+        <div class="col {{ barra.clase }}" style="height: {{ barra.alto }}%"
+             title="{{ barra.usuario.nombre }}: {{ '%.1f'|format(barra.horas) }} h"></div>
+        {% endfor %}
+      </div>
+      <div class="etiqueta">{{ bloque.desde.strftime('%d/%m') }}</div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="leyenda">
+    {% for item in grafico.leyenda %}
+    <span><i class="punto {{ item.clase }}"></i>{{ item.usuario.nombre }}</span>
+    {% endfor %}
+  </div>
+  <p class="muted small">
+    La barra más alta de cada semana equivale a {{ '%.0f'|format(grafico.maximo) }} horas.
+  </p>
+  {% else %}
+  <p class="muted">Todavía no hay horas cargadas en las últimas semanas.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>{% if usuario.es_jefe %}Últimos registros del equipo{% else %}Mis últimos registros{% endif %}</h2>
+  {% set lista = registros_hoy if usuario.es_jefe else mis_registros %}
+  {% if lista %}
+  <table class="tabla">
+    <thead>
+      <tr>
+        {% if usuario.es_jefe %}<th>Persona</th>{% endif %}
+        <th>Fecha</th><th>Meta</th><th>Qué hizo</th><th>Horas</th><th>Estado</th><th>Comentario</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in lista %}
+      <tr>
+        {% if usuario.es_jefe %}<td>{{ r.usuario.nombre }}</td>{% endif %}
+        <td>{{ r.fecha.strftime('%d/%m/%Y') }}</td>
+        <td>{{ r.meta.titulo if r.meta else '—' }}</td>
+        <td class="desc">{{ r.descripcion }}</td>
+        <td>{{ '%.1f'|format(r.horas) }}</td>
+        <td><span class="badge {{ r.estado }}">{{ r.estado.replace('_', ' ') }}</span></td>
+        <td class="comentario">
+          {% if r.comentario %}
+            <div class="comentario-texto">{{ r.comentario }}</div>
+            {% if r.comentado_en %}
+            <div class="muted small">{{ r.comentado_en.strftime('%d/%m/%Y %H:%M') }}</div>
+            {% endif %}
+          {% elif not usuario.es_jefe %}
+            <span class="muted">—</span>
+          {% endif %}
+          {% if usuario.es_jefe %}
+          <form method="post" action="/registros/{{ r.id }}/comentario" class="inline">
+            <input type="hidden" name="volver" value="/">
+            <input type="text" name="comentario" value="{{ r.comentario or '' }}" placeholder="Observación...">
+            <button type="submit" class="link">Guardar</button>
+          </form>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="/registros/{{ r.id }}/eliminar"
+                onsubmit="return confirm('¿Eliminar este registro?')">
+            <input type="hidden" name="volver" value="/">
+            <button type="submit" class="link danger">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Sin registros todavía.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

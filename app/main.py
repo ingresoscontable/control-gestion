@@ -9,7 +9,7 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
+from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -62,6 +62,23 @@ app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="stati
 # --------------------------------------------------------------------------
 # Autenticación
 # --------------------------------------------------------------------------
+class Redireccionar(Exception):
+    """Corta la peticion y responde con una redireccion 303.
+
+    Se lanza desde las dependencias, que no pueden devolver una respuesta.
+    (Un HTTPException(303) dejaria un JSON en el cuerpo de la respuesta.)
+    """
+
+    def __init__(self, destino: str) -> None:
+        super().__init__(destino)
+        self.destino = destino
+
+
+@app.exception_handler(Redireccionar)
+async def manejar_redireccion(request: Request, excepcion: Redireccionar) -> Response:
+    return RedirectResponse(excepcion.destino, status_code=303)
+
+
 def usuario_actual(request: Request, db: Session = Depends(get_db)) -> Usuario | None:
     uid = request.session.get("usuario_id")
     if not uid:
@@ -75,15 +92,13 @@ def usuario_actual(request: Request, db: Session = Depends(get_db)) -> Usuario |
 
 def requiere_login(usuario: Usuario | None = Depends(usuario_actual)) -> Usuario:
     if usuario is None:
-        raise HTTPException(status_code=303, headers={"Location": "/login"})
+        raise Redireccionar("/login")
     return usuario
 
 
 def requiere_jefe(usuario: Usuario = Depends(requiere_login)) -> Usuario:
     if not usuario.es_jefe:
-        raise HTTPException(
-            status_code=303, headers={"Location": "/?msg=No+tienes+permiso+para+eso"}
-        )
+        raise Redireccionar("/?msg=No+tienes+permiso+para+eso")
     return usuario
 
 
@@ -862,6 +877,7 @@ def respaldos(
             archivo_base=str(config.DATA_DIR / "control.db"),
             horas=config.BACKUP_HORAS,
             conservar=config.BACKUP_CONSERVAR,
+            mismo_disco=backup.respaldos_en_mismo_disco(),
         ),
     )
 
@@ -874,6 +890,28 @@ def respaldo_ahora(usuario: Usuario = Depends(requiere_jefe)):
     except Exception as error:  # noqa: BLE001 - se informa al usuario, no se cae
         return ir_a("/respaldos", f"No se pudo crear el respaldo: {error}")
     return ir_a("/respaldos", f"Respaldo creado: {ruta.name}")
+
+
+@app.post("/respaldos/restaurar")
+def restaurar_respaldo(
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+    nombre: str = Form(...),
+):
+    """Vuelve la base al estado de un respaldo guardado."""
+    # La conexion de este pedido queda abierta arriba (la pidio requiere_jefe).
+    # En Windows no se puede reemplazar el archivo de la base mientras este
+    # abierto, asi que se devuelve al pool antes de restaurar.
+    db.close()
+    try:
+        seguridad = backup.restaurar_respaldo(nombre)
+        backup.limpiar_respaldos_antiguos()
+    except Exception as error:  # noqa: BLE001 - se informa al usuario, no se cae
+        return ir_a("/respaldos", f"No se pudo restaurar: {error}")
+    return ir_a(
+        "/respaldos",
+        f"Base restaurada desde {nombre}. Deje una copia previa: {seguridad.name}",
+    )
 
 
 # --------------------------------------------------------------------------

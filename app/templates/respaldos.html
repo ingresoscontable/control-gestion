@@ -5,6 +5,15 @@
 <h1>Respaldos</h1>
 <p class="sub">Copias de seguridad de la base de datos, hechas automáticamente y a pedido.</p>
 
+{% if mismo_disco %}
+<div class="alerta">
+  <strong>Los respaldos se guardan en el mismo disco que la base de datos.</strong>
+  Si falla el disco se pierde la información y las copias juntas.
+  Apunta <code>CG_BACKUP_DIR</code> a un pendrive o a una carpeta de red
+  (está explicado más abajo) y volvé a arrancar el sistema.
+</div>
+{% endif %}
+
 <div class="grid">
   <section class="card">
     <h2>Estado</h2>
@@ -32,6 +41,10 @@
       </li>
       <li>Para cambiar la frecuencia usa <code>CG_BACKUP_HORAS</code> y para cuántos conservar,
         <code>CG_BACKUP_CONSERVAR</code>.</li>
+      <li>Para volver atrás, pulsá <strong>Restaurar</strong> en la tabla de abajo: se
+        reemplaza toda la base por ese respaldo. Antes de reemplazarla el sistema deja
+        una copia de seguridad del estado actual, así que también se puede volver a
+        esa copia.</li>
     </ul>
   </section>
 </div>
@@ -41,7 +54,7 @@
   {% if respaldos %}
   <table class="tabla">
     <thead>
-      <tr><th>Archivo</th><th>Fecha</th><th>Tamaño</th><th>Ubicación</th></tr>
+      <tr><th>Archivo</th><th>Fecha</th><th>Tamaño</th><th>Ubicación</th><th></th></tr>
     </thead>
     <tbody>
       {% for item in respaldos %}
@@ -50,6 +63,13 @@
         <td>{{ item.fecha.strftime('%d/%m/%Y %H:%M') }}</td>
         <td>{{ '%.0f'|format(item.tamano_kb) }} KB</td>
         <td class="muted small">{{ item.ruta.parent }}</td>
+        <td>
+          <form method="post" action="/respaldos/restaurar"
+                onsubmit="return confirm('Se va a reemplazar toda la base de datos por este respaldo. Los datos cargados despues de esa fecha se pierden. Se deja una copia previa por las dudas. ¿Continuar?')">
+            <input type="hidden" name="nombre" value="{{ item.nombre }}">
+            <button type="submit" class="btn">Restaurar</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

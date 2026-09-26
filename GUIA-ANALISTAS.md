@@ -31,6 +31,11 @@ Son tres pasos y no lleva más de un minuto:
 Cárgalo **el mismo día**. Si te olvidaste de uno, cambia la fecha en el
 formulario y guárdalo igual: queda en el historial.
 
+Si todos los días cargas más o menos lo mismo, no hace falta escribirlo otra
+vez: en **Mis últimos registros** (al pie del panel) aprieta **Repetir** en la
+fila del día anterior. Se completan solos la meta, la descripción, las horas y
+el estado, y la fecha se pone en hoy. Revisa el texto y guarda.
+
 ---
 
 ## 3. Qué estado elijo

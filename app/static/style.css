@@ -343,3 +343,58 @@ code { font-family: Consolas, "Courier New", monospace; }
 /* Dentro de una tarjeta, las tarjetas de meta no vuelven a dibujar el borde. */
 .card .meta-card { border: none; border-radius: 0; padding: 0; margin-bottom: 18px; }
 .card .meta-card:last-child { margin-bottom: 0; }
+
+/* Calendario de carga: 7 columnas armadas con flexbox. */
+.cal { border-radius: 8px; overflow: hidden; }
+.cal-head { display: flex; background: var(--azul); color: #fff; }
+.cal-h {
+  flex: 0 0 14.2857%;
+  max-width: 14.2857%;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 0;
+}
+.cal-body { display: flex; flex-wrap: wrap; }
+.cal-dia {
+  flex: 0 0 14.2857%;
+  max-width: 14.2857%;
+  min-height: 104px;
+  background: #fff;
+  padding: 6px;
+  overflow: hidden;
+  outline: 1px solid var(--borde);
+  outline-offset: -1px;
+}
+.cal-dia.vacia { background: transparent; outline: none; min-height: 0; }
+.cal-dia.finde { background: var(--gris); }
+.cal-dia.hoy { background: #eff6ff; }
+.cal-dia.hoy .cal-num { color: var(--azul-claro); }
+.cal-num {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.cal-total { font-size: 11px; font-weight: 400; color: var(--muted); }
+.cal-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.cal-chip { font-size: 11px; line-height: 1; padding: 4px 5px; border-radius: 4px; }
+.cal-chip.no { background: #eef1f6; color: var(--muted); border: 1px dashed var(--borde); }
+.cal-chip.c1 { background: #2563eb; color: #fff; }
+.cal-chip.c2 { background: #0ea5e9; color: #fff; }
+.cal-chip.c3 { background: #14b8a6; color: #fff; }
+.cal-chip.c4 { background: #8b5cf6; color: #fff; }
+.cal-chip.c5 { background: #f59e0b; color: #fff; }
+.cal-chip.c6 { background: #ef4444; color: #fff; }
+
+@media (max-width: 700px) {
+  .cal-dia { min-height: 66px; padding: 4px 3px; }
+  .cal-h { font-size: 11px; padding: 6px 0; }
+  .cal-num { font-size: 11px; margin-bottom: 4px; }
+  .cal-total { display: none; }
+  .cal-chip { font-size: 10px; padding: 3px; }
+}
+

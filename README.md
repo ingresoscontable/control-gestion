@@ -84,6 +84,10 @@ Entra y **cambia el PIN de inmediato** en la sección *Ayuda → Cambiar mi PIN*
   fecha límite y (opcional) **horas estimadas** de trabajo. Cualquier meta se
   puede **editar después** (título, responsable, plazo, horas estimadas y
   estado) desde el botón *Editar*, sin perder los reportes ya cargados.
+  El botón *Duplicar* hace una **copia de la meta** (título, responsable, plazo
+  y horas) y abre el formulario para ajustarla: sirve para repetir la
+  estructura del corte anterior sin volver a cargar todo a mano. La copia
+  arranca siempre activa, aunque el original esté cerrado.
 - *Progreso* → vista con barra de avance por meta, más el promedio y las horas
   acumuladas del equipo.
 - *Panel* → ver quién ya registró hoy y quién falta; ver el avance de cada meta
@@ -92,10 +96,12 @@ Entra y **cambia el PIN de inmediato** en la sección *Ayuda → Cambiar mi PIN*
   límite**, con los días de atraso (al equipo le muestra solo las suyas).
   Cierra el panel con un **gráfico de horas de las últimas 8 semanas**, una barra
   por persona y por semana.
-- *Registros* → historial completo, con filtros por persona y rango de fechas,
-  botón **Exportar a Excel** que baja a `.xlsx` exactamente lo que está filtrado,
-  y **reporte mensual en PDF** con resumen general, resumen por persona, metas
-  del periodo y detalle de los reportes diarios.
+- *Registros* → historial completo, con filtros por **meta**, persona y rango de
+  fechas, botón **Exportar a Excel** que baja a `.xlsx` exactamente lo que está
+  filtrado, y **reporte mensual en PDF** con resumen general, resumen por
+  persona, metas del periodo y detalle de los reportes diarios.
+- *Calendario* → el mes en curso dibujado día por día: quién cargó, con cuántas
+  horas y quién no reportó. Flechas para pasar al mes anterior o siguiente.
 - *Comentarios* → en el panel y en registros puedes dejarle una observación a
   cada reporte diario (el empleado la ve, pero no puede editarla).
 - *Respaldos* → copia de seguridad automática (cada 24 h y al arrancar) y botón
@@ -108,6 +114,9 @@ Entra y **cambia el PIN de inmediato** en la sección *Ayuda → Cambiar mi PIN*
 
 - *Panel* → elegir la meta, escribir lo que hizo, las horas y el estado, y guardar.
   También ve **el avance de sus metas** con la barra de progreso.
+  En *Mis últimos registros* cada fila tiene un enlace **Repetir**: precarga el
+  formulario con esa carga (meta, descripción, horas y estado) pero con la fecha
+  de hoy, para no volver a escribir lo mismo todos los días.
 
 ---
 

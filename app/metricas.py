@@ -1,7 +1,8 @@
-"""Metricas del panel: resumen semanal y horas por semana."""
+"""Metricas del panel: resumen semanal, horas por semana y calendario."""
 
 from __future__ import annotations
 
+import calendar
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
@@ -10,6 +11,12 @@ from sqlalchemy.orm import Session
 from .models import Registro, Usuario
 
 COLORES = 6
+
+
+def _iniciales(nombre: str) -> str:
+    """Hasta dos letras para mostrar en una celda chica del calendario."""
+    partes = [p for p in nombre.split() if p]
+    return "".join(p[0] for p in partes[:2]).upper() or "?"
 
 
 def rango_semana(dia: date) -> tuple[date, date]:
@@ -118,4 +125,72 @@ def horas_por_semana(
             for posicion, persona in enumerate(equipo)
         ],
         "hay_datos": maximo > 0,
+    }
+
+
+def calendario_mes(db: Session, equipo: list[Usuario], anio: int, mes: int) -> dict:
+    """Quien cargo, dia por dia, durante el mes pedido.
+
+    Cada celda trae una linea por persona del equipo para que se vean los dias
+    sin reporte sin tener que contarlos a mano.
+    """
+    primer_dia = date(anio, mes, 1)
+    ultimo_dia = date(anio, mes, calendar.monthrange(anio, mes)[1])
+
+    filas = db.execute(
+        select(
+            Registro.fecha,
+            Registro.usuario_id,
+            func.count(Registro.id),
+            func.coalesce(func.sum(Registro.horas), 0.0),
+        )
+        .where(Registro.fecha >= primer_dia, Registro.fecha <= ultimo_dia)
+        .group_by(Registro.fecha, Registro.usuario_id)
+    ).all()
+
+    cargado: dict[date, dict[int, dict]] = {}
+    for fecha, usuario_id, reportes, horas in filas:
+        cargado.setdefault(fecha, {})[usuario_id] = {
+            "reportes": reportes,
+            "horas": float(horas),
+        }
+
+    dias = []
+    dia = primer_dia
+    while dia <= ultimo_dia:
+        del_dia = cargado.get(dia, {})
+        celdas = []
+        for posicion, persona in enumerate(equipo):
+            dato = del_dia.get(persona.id)
+            celdas.append(
+                {
+                    "usuario": persona,
+                    "iniciales": _iniciales(persona.nombre),
+                    "cargado": dato is not None,
+                    "horas": dato["horas"] if dato else 0.0,
+                    "reportes": dato["reportes"] if dato else 0,
+                    "clase": f"c{posicion % COLORES + 1}",
+                }
+            )
+
+        dias.append(
+            {
+                "fecha": dia,
+                "num": dia.day,
+                "finde": dia.weekday() >= 5,
+                "celdas": celdas,
+                "total": sum(dato["horas"] for dato in del_dia.values()),
+                "reportaron": len(del_dia),
+            }
+        )
+        dia += timedelta(days=1)
+
+    return {
+        "anio": anio,
+        "mes": mes,
+        "dias": dias,
+        # dias del mes anterior que hay que dejar en blanco al principio
+        "huecos": primer_dia.weekday(),
+        "total_horas": sum(dia["total"] for dia in dias),
+        "dias_con_carga": sum(1 for dia in dias if dia["reportaron"]),
     }

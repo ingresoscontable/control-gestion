@@ -29,20 +29,27 @@
 <div class="grid">
   <section class="card">
     <h2>Registrar trabajo del día</h2>
+    {% if a_repetir %}
+    <div class="alerta ok">
+      Repitiendo el registro del {{ a_repetir.fecha.strftime('%d/%m/%Y') }}:
+      revisá la descripción y las horas. <strong>La fecha se pone en hoy</strong>.
+      <a href="/">Cancelar</a>
+    </div>
+    {% endif %}
     <form method="post" action="/registros" class="form-grid">
       <label class="full">
         ¿En qué meta trabajaste?
         <select name="meta_id">
           <option value="">— Sin meta específica —</option>
           {% for m in mis_metas %}
-          <option value="{{ m.id }}">{{ m.titulo }}</option>
+          <option value="{{ m.id }}" {% if a_repetir and a_repetir.meta_id == m.id %}selected{% endif %}>{{ m.titulo }}</option>
           {% endfor %}
         </select>
       </label>
 
       <label class="full">
         Qué hiciste hoy
-        <textarea name="descripcion" rows="3" placeholder="Ej: Concilié las cuentas por cobrar de septiembre..." required></textarea>
+        <textarea name="descripcion" rows="3" placeholder="Ej: Concilié las cuentas por cobrar de septiembre..." required>{{ a_repetir.descripcion if a_repetir else '' }}</textarea>
       </label>
 
       <label>
@@ -52,14 +59,15 @@
 
       <label>
         Horas dedicadas
-        <input type="number" name="horas" value="0" min="0" max="24" step="0.5">
+        <input type="number" name="horas" value="{{ a_repetir.horas if a_repetir else 0 }}" min="0" max="24" step="0.5">
       </label>
 
       <label>
         Estado
         <select name="estado">
+          {% set estado_actual = a_repetir.estado if a_repetir else 'en_progreso' %}
           {% for clave, etiqueta in estados_registro %}
-          <option value="{{ clave }}">{{ etiqueta }}</option>
+          <option value="{{ clave }}" {% if clave == estado_actual %}selected{% endif %}>{{ etiqueta }}</option>
           {% endfor %}
         </select>
       </label>
@@ -229,6 +237,9 @@
           {% endif %}
         </td>
         <td>
+          {% if r.usuario_id == usuario.id %}
+          <a class="link" href="/?repetir={{ r.id }}">Repetir</a>
+          {% endif %}
           <form method="post" action="/registros/{{ r.id }}/eliminar"
                 onsubmit="return confirm('¿Eliminar este registro?')">
             <input type="hidden" name="volver" value="/">

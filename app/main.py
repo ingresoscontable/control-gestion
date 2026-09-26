@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import calendar
 from contextlib import asynccontextmanager, suppress
 from datetime import date, datetime, timedelta
 from io import BytesIO
@@ -21,7 +22,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import backup, config, reportes
 from .database import Base, engine, get_db
-from .metricas import horas_por_semana, resumen_semanal
+from .metricas import calendario_mes, horas_por_semana, resumen_semanal
 from .migraciones import aplicar_migraciones
 from .progreso import metas_vencidas, progreso_metas, progreso_por_id
 from .models import (
@@ -184,7 +185,7 @@ def empleados_activos(db: Session) -> list[Usuario]:
     )
 
 
-def filtrar_registros(usuario_id: str, desde: str, hasta: str):
+def filtrar_registros(usuario_id: str, desde: str, hasta: str, meta_id: str = ""):
     """Arma la consulta de registros y los filtros aplicados.
 
     Se usa tanto en la página de registros como en la exportación a Excel
@@ -196,6 +197,10 @@ def filtrar_registros(usuario_id: str, desde: str, hasta: str):
     if (usuario_id or "").isdigit():
         consulta = consulta.where(Registro.usuario_id == int(usuario_id))
         filtros["usuario_id"] = int(usuario_id)
+
+    if (meta_id or "").isdigit():
+        consulta = consulta.where(Registro.meta_id == int(meta_id))
+        filtros["meta_id"] = int(meta_id)
 
     f_desde = parse_fecha(desde)
     f_hasta = parse_fecha(hasta)
@@ -252,6 +257,7 @@ def panel(
     request: Request,
     usuario: Usuario = Depends(requiere_login),
     db: Session = Depends(get_db),
+    repetir: str = "",
 ):
     hoy = date.today()
     equipo = list(
@@ -283,8 +289,21 @@ def panel(
 
     resumen, semana_inicio = resumen_semanal(db, equipo, hoy)
 
+    # ?repetir=<id> precarga el formulario con un registro propio: sirve para
+    # repetir la carga del dia anterior sin volver a escribir todo.
+    a_repetir = None
+    if repetir.isdigit():
+        candidato = db.get(Registro, int(repetir))
+        if candidato is not None and candidato.usuario_id == usuario.id:
+            a_repetir = candidato
+
     visibles = metas_visibles(db, usuario)
     ids_visibles = {meta.id for meta in visibles}
+    if a_repetir is not None and a_repetir.meta is not None:
+        # La meta del registro repetido tiene que estar en el combo aunque
+        # este cerrada, sino el formulario la perderia sin avisar.
+        if a_repetir.meta_id not in ids_visibles:
+            visibles = [a_repetir.meta] + visibles
     progreso = progreso_por_id(db, metas)
 
     return templates.TemplateResponse(
@@ -305,6 +324,7 @@ def panel(
             ),
             mis_metas=visibles,
             mis_registros=mis_registros,
+            a_repetir=a_repetir,
             registrar_hoy=[u for u in equipo if u.id not in ids_registraron and u.rol != ROL_JEFE],
             resumen_semana=resumen,
             semana_inicio=semana_inicio,
@@ -360,10 +380,11 @@ def listar_registros(
     usuario: Usuario = Depends(requiere_jefe),
     db: Session = Depends(get_db),
     usuario_id: str = "",
+    meta_id: str = "",
     desde: str = "",
     hasta: str = "",
 ):
-    consulta, filtros = filtrar_registros(usuario_id, desde, hasta)
+    consulta, filtros = filtrar_registros(usuario_id, desde, hasta, meta_id)
     registros = list(db.scalars(consulta.limit(500)))
     return templates.TemplateResponse(
         request,
@@ -373,6 +394,13 @@ def listar_registros(
             usuario,
             registros=registros,
             equipo=list(db.scalars(select(Usuario).order_by(Usuario.nombre))),
+            metas=list(
+                db.scalars(
+                    select(Meta).order_by(
+                        Meta.estado, Meta.fecha_limite.is_(None), Meta.fecha_limite
+                    )
+                )
+            ),
             filtros=filtros,
             total_horas=sum(r.horas for r in registros),
             meses=reportes.MESES,
@@ -385,11 +413,12 @@ def exportar_registros(
     usuario: Usuario = Depends(requiere_jefe),
     db: Session = Depends(get_db),
     usuario_id: str = "",
+    meta_id: str = "",
     desde: str = "",
     hasta: str = "",
 ):
     """Descarga en Excel los registros que cumplen los filtros elegidos."""
-    consulta, _filtros = filtrar_registros(usuario_id, desde, hasta)
+    consulta, _filtros = filtrar_registros(usuario_id, desde, hasta, meta_id)
     registros = list(db.scalars(consulta.limit(5000)))
 
     libro = Workbook()
@@ -445,6 +474,56 @@ def exportar_registros(
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         ),
         headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
+@app.get("/calendario")
+def calendario(
+    request: Request,
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+    anio: str = "",
+    mes: str = "",
+):
+    """Calendario de carga: quien reporto y cuantas horas, dia por dia."""
+    hoy = date.today()
+
+    try:
+        anio_num = int(anio) if anio else hoy.year
+        mes_num = int(mes) if mes else hoy.month
+    except ValueError:
+        anio_num, mes_num = hoy.year, hoy.month
+
+    if not 2000 <= anio_num <= 2100 or not 1 <= mes_num <= 12:
+        return ir_a("/calendario", "Periodo no valido")
+
+    equipo = list(
+        db.scalars(
+            select(Usuario).where(Usuario.activo.is_(True)).order_by(Usuario.nombre)
+        )
+    )
+    cal = calendario_mes(db, equipo, anio_num, mes_num)
+
+    primero = date(anio_num, mes_num, 1)
+    ultimo = date(anio_num, mes_num, calendar.monthrange(anio_num, mes_num)[1])
+    anterior = primero - timedelta(days=1)
+    siguiente = ultimo + timedelta(days=1)
+
+    return templates.TemplateResponse(
+        request,
+        "calendario.html",
+        contexto(
+            request,
+            usuario,
+            cal=cal,
+            meses=reportes.MESES,
+            anio=anio_num,
+            mes=mes_num,
+            anio_anterior=anterior.year,
+            mes_anterior=anterior.month,
+            anio_siguiente=siguiente.year,
+            mes_siguiente=siguiente.month,
+        ),
     )
 
 
@@ -621,6 +700,36 @@ def eliminar_meta(
     db.delete(meta)
     db.commit()
     return ir_a("/metas", "Meta eliminada (los registros se conservan)")
+
+
+@app.post("/metas/{meta_id}/duplicar")
+def duplicar_meta(
+    meta_id: int,
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+):
+    """Copia una meta para no volver a cargarla a mano.
+
+    Las metas cambian de numero de corte, de mes y de anio, asi que la copia
+    se abre directo en el formulario de edicion para ajustar titulo y fechas.
+    """
+    original = db.get(Meta, meta_id)
+    if original is None:
+        return ir_a("/metas", "Esa meta ya no existe")
+
+    copia = Meta(
+        titulo=f"{original.titulo} (copia)"[:140],
+        descripcion=original.descripcion,
+        asignado_a=original.asignado_a,
+        fecha_inicio=original.fecha_inicio,
+        fecha_limite=original.fecha_limite,
+        horas_estimadas=original.horas_estimadas or 0.0,
+        # La copia arranca siempre activa, aunque el original este cerrado.
+        estado="activa",
+    )
+    db.add(copia)
+    db.commit()
+    return ir_a(f"/metas/{copia.id}/editar", "Meta duplicada, ajuste titulo y fechas")
 
 
 @app.get("/metas/{meta_id}/editar")

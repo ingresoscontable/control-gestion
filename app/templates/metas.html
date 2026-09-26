@@ -78,6 +78,10 @@
         <td><span class="badge {{ 'completado' if m.estado == 'cerrada' else 'en_progreso' }}">{{ m.estado }}</span></td>
         <td class="acciones">
           <a class="link" href="/metas/{{ m.id }}/editar">Editar</a>
+          <form method="post" action="/metas/{{ m.id }}/duplicar"
+                onsubmit="return confirm('¿Crear una copia de esta meta? Se abre para editar el titulo y las fechas.')">
+            <button type="submit" class="link">Duplicar</button>
+          </form>
           <form method="post" action="/metas/{{ m.id }}/estado">
             <input type="hidden" name="estado" value="{{ 'activa' if m.estado == 'cerrada' else 'cerrada' }}">
             <button type="submit" class="link">{{ 'Reabrir' if m.estado == 'cerrada' else 'Cerrar' }}</button>

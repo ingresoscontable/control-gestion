@@ -17,6 +17,15 @@
       </select>
     </label>
     <label>
+      Meta
+      <select name="meta_id">
+        <option value="">Todas</option>
+        {% for m in metas %}
+        <option value="{{ m.id }}" {% if filtros.meta_id == m.id %}selected{% endif %}>{{ m.titulo }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
       Desde
       <input type="date" name="desde" value="{{ filtros.desde.isoformat() if filtros.desde else '' }}">
     </label>

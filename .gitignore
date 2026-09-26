@@ -22,3 +22,8 @@ __pycache__/
 # Logs y respaldos
 *.log
 respaldos/
+
+# Tokens / variables de entorno
+.env
+.env.*
+!.env.example

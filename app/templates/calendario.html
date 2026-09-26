@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block titulo %}Calendario · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Calendario de carga</h1>
+<p class="sub">
+  {{ meses[mes - 1] }} de {{ anio }} ·
+  {{ cal.dias_con_carga }} día(s) con reporte ·
+  {{ '%.1f'|format(cal.total_horas) }} h cargadas
+</p>
+
+<section class="card">
+  <form method="get" action="/calendario" class="filtros">
+    <label>
+      Mes
+      <select name="mes">
+        {% for numero in range(1, 13) %}
+        <option value="{{ numero }}" {% if numero == mes %}selected{% endif %}>{{ meses[numero - 1] }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Año
+      <input type="number" name="anio" value="{{ anio }}" min="2000" max="2100">
+    </label>
+    <div class="filtros-botones">
+      <button type="submit" class="btn primary">Ver</button>
+      <a class="btn ghost" href="/calendario?anio={{ anio_anterior }}&amp;mes={{ mes_anterior }}">
+        &larr; Mes anterior
+      </a>
+      <a class="btn ghost" href="/calendario?anio={{ anio_siguiente }}&amp;mes={{ mes_siguiente }}">
+        Mes siguiente &rarr;
+      </a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  {% set dias_semana = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] %}
+
+  <div class="cal">
+    <div class="cal-head">
+      {% for nombre in dias_semana %}
+      <div class="cal-h">{{ nombre }}</div>
+      {% endfor %}
+    </div>
+
+    <div class="cal-body">
+      {% for hueco in range(cal.huecos) %}
+      <div class="cal-dia vacia"></div>
+      {% endfor %}
+
+      {% for dia in cal.dias %}
+      <div class="cal-dia{% if dia.finde %} finde{% endif %}{% if dia.fecha == hoy %} hoy{% endif %}">
+        <div class="cal-num">
+          <span>{{ dia.num }}</span>
+          {% if dia.total %}
+          <span class="cal-total">{{ '%.1f'|format(dia.total) }} h</span>
+          {% endif %}
+        </div>
+        <div class="cal-chips">
+          {% for c in dia.celdas %}
+          {% if c.cargado or not dia.finde %}
+          <span class="cal-chip {{ 'ok' if c.cargado else 'no' }}{% if c.cargado %} {{ c.clase }}{% endif %}"
+                title="{{ c.usuario.nombre }}{% if c.cargado %}: {{ c.reportes }} reporte(s), {{ '%.1f'|format(c.horas) }} h{% else %}: sin reportar{% endif %}">
+            {{ c.iniciales }}{% if c.cargado %}&middot;{{ '%.1f'|format(c.horas) }}h{% endif %}
+          </span>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="leyenda">
+    {% for c in cal.dias[0].celdas %}
+    <span><i class="punto {{ c.clase }}"></i>{{ c.usuario.nombre }}</span>
+    {% endfor %}
+  </div>
+
+  <p class="muted small">
+    Un recuadro de color es la persona que cargó ese día (con sus horas).
+    Un recuadro gris es un día hábil sin reporte.
+    Los sábados y domingos solo aparece quien cargó.
+    Pasá el mouse sobre un recuadro para ver el detalle.
+  </p>
+</section>
+
+{% endblock %}

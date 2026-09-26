@@ -179,6 +179,11 @@ set CG_BACKUP_DIR=D:\Respaldos\ControlGestion
 call ".venv\Scripts\python.exe" main.py
 ```
 
+> **Nota:** el programa **no** lee archivos `.env`: las variables tienen que
+> estar en el entorno de Windows o en `iniciar.bat`. Un `.env` en la raíz se usa
+> solo para herramientas de desarrollo y está ignorado por git (ver
+> `.gitignore`).
+
 ---
 
 ## Estructura del proyecto
@@ -200,7 +205,7 @@ control-gestion/
 │   ├── security.py         # hash de PIN y detección de IP
 │   ├── reportes.py         # reporte mensual en PDF
 │   ├── progreso.py         # cálculo del avance de las metas
-│   ├── metricas.py         # resumen semanal y gráfico de horas
+│   ├── metricas.py         # resumen semanal, gráfico de horas y calendario
 │   ├── backup.py           # respaldos automáticos y manuales
 │   ├── migraciones.py      # agrega columnas nuevas a bases ya existentes
 │   ├── seed.py             # crea el usuario jefe la primera vez
@@ -220,8 +225,10 @@ necesitan un navegador, no instalan nada.
 Lo que sí hay que cuidar es el navegador del cliente. En Windows 7 Chrome y Edge
 se quedaron en la **versión 109**, así que la interfaz se hizo a propósito con:
 
-- CSS simple (flexbox y variables de color), sin `grid` avanzado ni `:has()`.
-- Nada de JavaScript moderno: el único JS son dos `confirm()`.
+- CSS simple: flexbox, `display: grid` a dos o tres columnas y variables de
+  color. Nada de `:has()` ni de funciones nuevas del CSS.
+- Nada de JavaScript moderno: solo `confirm()` nativos en los botones que
+  borran o duplican algo.
 - **Sin emojis**, porque Windows 7 no trae la fuente de emoji (Segoe UI Emoji
   llegó con Windows 8) y se verían como cuadraditos.
 

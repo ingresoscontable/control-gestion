@@ -46,6 +46,12 @@ el servidor queda corriendo en segundo plano, sin ninguna ventana visible
 (aparece un mensaje de confirmación y ya). Para detenerlo, doble clic en
 **`detener.bat`**. El sistema sigue disponible para las demás PC mientras esté corriendo.
 
+**¿Querés que arranque solo cada vez que prendés la PC?** Doble clic en
+**`instalar-arranque.bat`**. Cada vez que inicies sesión en Windows, el servidor
+arranca solo en segundo plano, sin ventana ni mensaje. No hace falta
+administrador. Para desactivarlo, **`desinstalar-arranque.bat`**
+(el que ya esté corriendo sigue corriendo hasta que uses `detener.bat`).
+
 ### Primer ingreso
 
 | Usuario | PIN  |
@@ -122,8 +128,20 @@ Hay un instructivo corto en dos lugares:
 Toda la información vive en **`data/control.db`**. El sistema ya hace respaldos
 solo: uno al arrancar y otro cada 24 horas, en `data/respaldos/`, conservando
 los últimos 30. Revisa la página **Respaldos** para ver el estado y crear uno a
-mano. Aun así, conviene copiar esa carpeta a un pendrive o a la nube de vez en
-cuando (o apuntar `CG_BACKUP_DIR` directamente a un pendrive).
+mano.
+
+**Restaurar:** en la página **Respaldos**, cada archivo tiene un botón
+*Restaurar*. Vuelve la base al estado de ese momento. Antes de reemplazarla el
+sistema deja una copia de seguridad del estado actual (etiqueta
+`antes-de-restaurar`), así que también se puede volver a esa copia. Si en ese
+exacto momento alguien está cargando datos, el sistema espera un par de
+segundos y te avisa para que lo repitas.
+
+**Ojo con el disco:** por defecto los respaldos quedan en `data/respaldos/`,
+es decir, **en el mismo disco que la base**. Si se rompe el disco se pierde todo
+junto. La página **Respaldos** muestra un aviso en ese caso. Para guardarlo en
+otro lado (pendrive o carpeta de red) apuntá `CG_BACKUP_DIR` ahí. Aun así,
+conviene copiar esa carpeta a un pendrive o a la nube de vez en cuando.
 
 ---
 
@@ -136,7 +154,7 @@ Variables de entorno*) o editando `iniciar.bat`:
 | Variable            | Por defecto                  | Para qué sirve                       |
 |---------------------|------------------------------|--------------------------------------|
 | `CG_PORT`           | `8000`                       | Puerto del servidor                  |
-| `CG_SECRET_KEY`     | `cambiar-esta-clave-...`     | Clave que firma la sesión (cámbiala) |
+| `CG_SECRET_KEY`     | (se genera sola)             | Clave que firma la sesión. Si no se define, cada instalación genera la suya y la guarda en `data/.secret_key`; definila a mano solo si querés controlarlo vos. |
 | `CG_DATA_DIR`       | `./data`                     | Carpeta del archivo de base de datos |
 | `CG_ADMIN_USUARIO`  | `jefe`                       | Usuario inicial del jefe             |
 | `CG_ADMIN_PIN`      | `1234`                       | PIN inicial (solo en el primer arranque) |
@@ -163,6 +181,8 @@ control-gestion/
 ├── iniciar.bat             # arranque en Windows (con ventana)
 ├── iniciar-oculto.vbs      # arranque en segundo plano (sin ventana)
 ├── detener.bat             # detiene el servidor en segundo plano
+├── instalar-arranque.bat   # hace que arranque solo al iniciar sesion
+├── desinstalar-arranque.bat # quita ese arranque automatico
 ├── abrir-firewall.bat      # abre el puerto en la red local (admin)
 ├── app/
 │   ├── main.py             # rutas y lógica

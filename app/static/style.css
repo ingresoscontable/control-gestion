@@ -142,6 +142,7 @@ td.comentario { min-width: 220px; }
 .tabla th { background: #f8fafc; font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
 .tabla td.desc { max-width: 380px; white-space: pre-wrap; }
 .tabla tr.cerrada { opacity: .55; }
+.tabla tr.eliminada { opacity: .45; }
 .tabla td.acciones { display: flex; gap: 12px; }
 
 /* Insignias */

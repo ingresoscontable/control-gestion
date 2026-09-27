@@ -13,8 +13,8 @@
 <section class="card">
   <div class="stats">
     <div class="stat">
-      <span class="stat-num">{{ registros|length }}</span>
-      <span class="stat-label">reporte(s) en la vista</span>
+      <span class="stat-num">{{ total }}</span>
+      <span class="stat-label">reporte(s) con esos filtros</span>
     </div>
     <div class="stat">
       <span class="stat-num">{{ '%.1f'|format(total_horas) }}</span>
@@ -29,6 +29,13 @@
       <span class="stat-label">con comentario tuyo</span>
     </div>
   </div>
+
+  {% if mostrados < total %}
+  <p class="muted small">
+    El historial trae los últimos {{ mostrados }} reportes; los totales de arriba
+    sí cuentan todos. Acotá las fechas para ver el resto.
+  </p>
+  {% endif %}
 
   <form method="get" action="/personas/{{ persona.id }}" class="filtros">
     <label>

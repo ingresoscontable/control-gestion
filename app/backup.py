@@ -43,6 +43,12 @@ def crear_respaldo(etiqueta: str = "") -> Path:
     finally:
         origen.close()
 
+    try:
+        _verificar_sqlite(destino)
+    except BaseException:
+        destino.unlink(missing_ok=True)
+        raise
+
     logger.info("Respaldo creado: %s", destino.name)
     return destino
 
@@ -105,6 +111,17 @@ def _reemplazar(origen: Path, destino: Path) -> None:
     ) from ultimo_error
 
 
+def _borrar_archivos_wal() -> None:
+    """Queda sin los acompanantes -wal y -shm de la base reemplazada.
+
+    Con el modo WAL, SQLite deja esos dos archivos al lado de la base. Si
+    sobreviven a un restaurar, apuntan a la base vieja y al abrirla SQLite
+    intentaria reproducirlos encima de la nueva.
+    """
+    for sufijo in ("-wal", "-shm"):
+        DB_PATH.with_name(DB_PATH.name + sufijo).unlink(missing_ok=True)
+
+
 def restaurar_respaldo(nombre: str) -> Path:
     """Reemplaza la base actual por un respaldo guardado.
 
@@ -136,6 +153,8 @@ def restaurar_respaldo(nombre: str) -> Path:
     except BaseException:
         temporal.unlink(missing_ok=True)
         raise
+
+    _borrar_archivos_wal()
 
     # La base restaurada puede ser mas vieja que el codigo: se agregan las
     # columnas que falten.

@@ -29,7 +29,9 @@ Son tres pasos y no lleva más de un minuto:
 3. **Pon las horas** y el **estado**, y guarda.
 
 Cárgalo **el mismo día**. Si te olvidaste de uno, cambia la fecha en el
-formulario y guárdalo igual: queda en el historial.
+formulario y guárdalo igual: se acepta desde hace 30 días hasta hoy. Solo se
+puede guardar **un reporte por día y por meta**, así que si ya cargaste algo,
+corrígilo en lugar de duplicarlo.
 
 Si todos los días cargas más o menos lo mismo, no hace falta escribirlo otra
 vez: en **Mis últimos registros** (al pie del panel) aprieta **Repetir** en la
@@ -75,6 +77,8 @@ La barra de progreso de cada meta se llena así:
 | La página no abre | Revisa que estés en la red de la oficina y que la PC del servidor esté encendida con su ventana abierta. |
 | Olvidaste el PIN | Pídele al jefe que te lo reinicie desde *Equipo*. Tarda un minuto. |
 | Te equivocaste en un reporte | Bórralo con *Eliminar* y vuelve a cargarlo. |
+| Te sale *"Ya hay un registro de ese día para esa meta"* | Ese día ya tenés uno cargado: borrá el anterior o guardá el nuevo con otra fecha. |
+| No te deja poner la fecha | Sólo se carga desde hace 30 días hasta hoy. Si es más viejo que eso, preguntale al jefe. |
 | Quieres cambiar tu PIN | Enlace *Guía* o *Ayuda* → **Cambiar mi PIN**. |
 
 ---

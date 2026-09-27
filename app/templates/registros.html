@@ -70,7 +70,13 @@
 </section>
 
 <section class="card">
-  <h2>{{ registros|length }} registro(s) · {{ '%.1f'|format(total_horas) }} horas acumuladas</h2>
+  <h2>{{ total }} registro(s) · {{ '%.1f'|format(total_horas) }} horas acumuladas</h2>
+  {% if mostrados < total %}
+  <p class="muted small">
+    La vista trae los últimos {{ mostrados }}. Para ver el resto, acotá los filtros
+    o bajá el Excel, que descarga todo lo filtrado.
+  </p>
+  {% endif %}
   {% if registros %}
   <table class="tabla">
     <thead>

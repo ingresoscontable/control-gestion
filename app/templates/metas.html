@@ -55,7 +55,7 @@
     </thead>
     <tbody>
       {% for m in metas %}
-      <tr class="{{ 'cerrada' if m.estado == 'cerrada' }}">
+      <tr class="{{ 'eliminada' if m.estado == 'eliminada' else ('cerrada' if m.estado == 'cerrada' else '') }}">
         <td>
           <strong>{{ m.titulo }}</strong>
           {% if m.descripcion %}<div class="muted small">{{ m.descripcion }}</div>{% endif %}
@@ -75,9 +75,19 @@
           <span class="avance-num {{ p.nivel if p else 'baja' }}">{{ p.avance if p else 0 }}%</span>
           <div class="muted small">{{ p.reportes if p else 0 }} reporte(s)</div>
         </td>
-        <td><span class="badge {{ 'completado' if m.estado == 'cerrada' else 'en_progreso' }}">{{ m.estado }}</span></td>
+        <td>
+          <span class="badge {{ 'completado' if m.estado == 'cerrada' else ('bloqueado' if m.estado == 'eliminada' else 'en_progreso') }}">
+            {{ 'archivada' if m.estado == 'eliminada' else m.estado }}
+          </span>
+        </td>
         <td class="acciones">
           <a class="link" href="/metas/{{ m.id }}/editar">Editar</a>
+          {% if m.estado == 'eliminada' %}
+          <form method="post" action="/metas/{{ m.id }}/estado">
+            <input type="hidden" name="estado" value="activa">
+            <button type="submit" class="link">Restaurar</button>
+          </form>
+          {% else %}
           <form method="post" action="/metas/{{ m.id }}/duplicar"
                 onsubmit="return confirm('¿Crear una copia de esta meta? Se abre para editar el titulo y las fechas.')">
             <button type="submit" class="link">Duplicar</button>
@@ -87,9 +97,10 @@
             <button type="submit" class="link">{{ 'Reabrir' if m.estado == 'cerrada' else 'Cerrar' }}</button>
           </form>
           <form method="post" action="/metas/{{ m.id }}/eliminar"
-                onsubmit="return confirm('¿Eliminar la meta? Los registros se conservan.')">
-            <button type="submit" class="link danger">Eliminar</button>
+                onsubmit="return confirm('¿Archivar la meta? Deja de mostrarse pero sus reportes se conservan y se puede restaurar.')">
+            <button type="submit" class="link danger">Archivar</button>
           </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -97,6 +108,12 @@
   </table>
   {% else %}
   <p class="muted">Todavía no hay metas creadas.</p>
+  {% endif %}
+  {% if archivadas %}
+  <p class="muted small">
+    {{ archivadas }} meta(s) archivada(s) arriba: dejan de aparecer en las pantallas
+    y en los reportes, pero conservan sus reportes y se pueden restaurar.
+  </p>
   {% endif %}
 </section>
 

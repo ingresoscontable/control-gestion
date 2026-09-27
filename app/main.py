@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
 from openpyxl.styles import Font
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -24,18 +24,21 @@ from . import backup, config, reportes
 from .database import Base, engine, get_db
 from .metricas import calendario_mes, horas_por_semana, resumen_semanal
 from .migraciones import aplicar_migraciones
-from .progreso import metas_vencidas, progreso_metas, progreso_por_id
 from .models import (
+    ESTADO_ELIMINADA,
     ESTADOS_META,
     ESTADOS_REGISTRO,
+    OPCIONES_META,
+    OPCIONES_REGISTRO,
     ROL_EMPLEADO,
     ROL_JEFE,
     Meta,
     Registro,
     Usuario,
 )
+from .progreso import metas_vencidas, progreso_metas, progreso_por_id
 from .security import hash_pin, ips_locales, valida_pin, verificar_pin
-from .seed import crear_datos_iniciales
+from .seed import borrar_primer_ingreso, crear_datos_iniciales
 
 APP_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
@@ -112,6 +115,12 @@ def ir_a(destino: str, msg: str = "") -> RedirectResponse:
 
 PAGINAS_VALIDAS = ("/", "/registros")
 
+# Cuantos registros trae cada listado antes de cortar. Los totales se calculan
+# aparte (totales_registros) para no mostrar una suma incompleta.
+LIMITE_LISTADO = 500
+LIMITE_HISTORIAL = 300
+LIMITE_EXPORTACION = 5000
+
 
 def volver_a(valor: str, por_defecto: str = "/") -> str:
     """Evita redirecciones abiertas: solo se vuelve a paginas conocidas."""
@@ -127,6 +136,7 @@ def contexto(request: Request, usuario: Usuario | None, **extra) -> dict:
         "usuario": usuario,
         "msg": request.query_params.get("msg", ""),
         "hoy": date.today(),
+        "limite_carga": date.today() - timedelta(days=config.DIAS_ATRASO),
         "APP_NAME": config.APP_NAME,
     }
     datos.update(extra)
@@ -142,8 +152,55 @@ def metas_visibles(db: Session, usuario: Usuario) -> list[Meta]:
                 Meta.estado == "activa",
                 or_(Meta.asignado_a.is_(None), Meta.asignado_a == usuario.id),
             )
+            .options(*OPCIONES_META)
             .order_by(Meta.fecha_limite.is_(None), Meta.fecha_limite)
         )
+    )
+
+
+def metas_ordenadas(db: Session, incluir_eliminadas: bool = False) -> list[Meta]:
+    """Metas en el orden en que se muestran, con el responsable ya cargado.
+
+    Las archivadas (estado "eliminada") quedan fuera de todas las listas
+    salvo que se las pida a proposito, en /metas.
+    """
+    consulta = select(Meta).options(*OPCIONES_META)
+    if not incluir_eliminadas:
+        consulta = consulta.where(Meta.estado != ESTADO_ELIMINADA)
+    return list(
+        db.scalars(
+            consulta.order_by(Meta.estado, Meta.fecha_limite.is_(None), Meta.fecha_limite)
+        )
+    )
+
+
+def meta_usable(db: Session, usuario: Usuario, meta_id: int) -> bool:
+    """El usuario puede reportar sobre esa meta.
+
+    Solo se pueden usar metas propias o del equipo (o cualquier meta si sos
+    jefe). El estado no cuenta, porque "Repetir" trae la meta del dia
+    anterior aunque ya este cerrada.
+    """
+    meta = db.get(Meta, meta_id)
+    if meta is None:
+        return False
+    if usuario.es_jefe:
+        return True
+    return meta.asignado_a is None or meta.asignado_a == usuario.id
+
+
+def registro_duplicado(db: Session, usuario_id: int, dia: date, meta_id: int | None) -> bool:
+    """Si esa persona ya cargo ese dia para esa meta (o para "sin meta")."""
+    condicion_meta = Registro.meta_id.is_(None) if meta_id is None else Registro.meta_id == meta_id
+    return (
+        db.scalar(
+            select(Registro.id).where(
+                Registro.usuario_id == usuario_id,
+                Registro.fecha == dia,
+                condicion_meta,
+            )
+        )
+        is not None
     )
 
 
@@ -214,6 +271,29 @@ def filtrar_registros(usuario_id: str, desde: str, hasta: str, meta_id: str = ""
     return consulta, filtros
 
 
+def totales_registros(db: Session, consulta) -> dict:
+    """Totales de TODOS los registros que cumplen el filtro.
+
+    Se calculan en una consulta aparte porque la lista que se muestra viene
+    limitada: si no, el total de horas que aparece en pantalla dejaria de
+    coincidir con lo que realmente hay en la base.
+    """
+    cantidad, horas, dias, comentarios = db.execute(
+        consulta.with_only_columns(
+            func.count(Registro.id),
+            func.coalesce(func.sum(Registro.horas), 0.0),
+            func.count(func.distinct(Registro.fecha)),
+            func.coalesce(func.sum(case((Registro.comentario != "", 1), else_=0)), 0),
+        ).order_by(None)
+    ).one()
+    return {
+        "cantidad": int(cantidad or 0),
+        "horas": float(horas or 0.0),
+        "dias": int(dias or 0),
+        "comentarios": int(comentarios or 0),
+    }
+
+
 # --------------------------------------------------------------------------
 # Login / logout
 # --------------------------------------------------------------------------
@@ -268,20 +348,18 @@ def panel(
         db.scalars(
             select(Registro)
             .where(Registro.fecha == hoy)
+            .options(*OPCIONES_REGISTRO)
             .order_by(Registro.creado_en.desc())
         )
     )
     ids_registraron = {r.usuario_id for r in registros_hoy}
 
-    metas = list(
-        db.scalars(
-            select(Meta).order_by(Meta.estado, Meta.fecha_limite.is_(None), Meta.fecha_limite)
-        )
-    )
+    metas = metas_ordenadas(db)
     mis_registros = list(
         db.scalars(
             select(Registro)
             .where(Registro.usuario_id == usuario.id)
+            .options(*OPCIONES_REGISTRO)
             .order_by(Registro.fecha.desc(), Registro.id.desc())
             .limit(10)
         )
@@ -299,11 +377,14 @@ def panel(
 
     visibles = metas_visibles(db, usuario)
     ids_visibles = {meta.id for meta in visibles}
-    if a_repetir is not None and a_repetir.meta is not None:
-        # La meta del registro repetido tiene que estar en el combo aunque
-        # este cerrada, sino el formulario la perderia sin avisar.
-        if a_repetir.meta_id not in ids_visibles:
-            visibles = [a_repetir.meta] + visibles
+    # La meta del registro repetido tiene que estar en el combo aunque
+    # este cerrada, sino el formulario la perderia sin avisar.
+    if (
+        a_repetir is not None
+        and a_repetir.meta is not None
+        and a_repetir.meta_id not in ids_visibles
+    ):
+        visibles = [a_repetir.meta] + visibles
     progreso = progreso_por_id(db, metas)
 
     return templates.TemplateResponse(
@@ -360,11 +441,28 @@ def crear_registro(
     if id_meta is not None and db.get(Meta, id_meta) is None:
         id_meta = None
 
+    dia = parse_fecha(fecha) or date.today()
+    hoy = date.today()
+    if dia > hoy:
+        return ir_a("/", "No se puede registrar trabajo en una fecha futura")
+    if dia < hoy - timedelta(days=config.DIAS_ATRASO):
+        limite = (hoy - timedelta(days=config.DIAS_ATRASO)).strftime("%d/%m/%Y")
+        return ir_a("/", f"Fuera de rango: solo se carga desde el {limite}")
+
+    if id_meta is not None and not meta_usable(db, usuario, id_meta):
+        return ir_a("/", "Esa meta no te corresponde")
+
+    if registro_duplicado(db, usuario.id, dia, id_meta):
+        return ir_a(
+            "/",
+            "Ya hay un registro de ese día para esa meta; eliminá el anterior o cambiá la fecha",
+        )
+
     db.add(
         Registro(
             usuario_id=usuario.id,
             meta_id=id_meta,
-            fecha=parse_fecha(fecha) or date.today(),
+            fecha=dia,
             descripcion=descripcion,
             horas=parse_horas(horas),
             estado=estado,
@@ -385,7 +483,10 @@ def listar_registros(
     hasta: str = "",
 ):
     consulta, filtros = filtrar_registros(usuario_id, desde, hasta, meta_id)
-    registros = list(db.scalars(consulta.limit(500)))
+    totales = totales_registros(db, consulta)
+    registros = list(
+        db.scalars(consulta.options(*OPCIONES_REGISTRO).limit(LIMITE_LISTADO))
+    )
     return templates.TemplateResponse(
         request,
         "registros.html",
@@ -394,15 +495,12 @@ def listar_registros(
             usuario,
             registros=registros,
             equipo=list(db.scalars(select(Usuario).order_by(Usuario.nombre))),
-            metas=list(
-                db.scalars(
-                    select(Meta).order_by(
-                        Meta.estado, Meta.fecha_limite.is_(None), Meta.fecha_limite
-                    )
-                )
-            ),
+            metas=metas_ordenadas(db),
             filtros=filtros,
-            total_horas=sum(r.horas for r in registros),
+            total=totales["cantidad"],
+            total_horas=totales["horas"],
+            mostrados=len(registros),
+            limite=LIMITE_LISTADO,
             meses=reportes.MESES,
         ),
     )
@@ -419,7 +517,10 @@ def exportar_registros(
 ):
     """Descarga en Excel los registros que cumplen los filtros elegidos."""
     consulta, _filtros = filtrar_registros(usuario_id, desde, hasta, meta_id)
-    registros = list(db.scalars(consulta.limit(5000)))
+    totales = totales_registros(db, consulta)
+    registros = list(
+        db.scalars(consulta.options(*OPCIONES_REGISTRO).limit(LIMITE_EXPORTACION))
+    )
 
     libro = Workbook()
     hoja = libro.active
@@ -457,10 +558,24 @@ def exportar_registros(
 
     hoja.append([])
     hoja.append(
-        ["", "", "", "", "TOTAL HORAS", round(sum(r.horas for r in registros), 2)]
+        ["", "", "", "", "TOTAL HORAS", round(totales["horas"], 2)]
     )
+    if len(registros) < totales["cantidad"]:
+        hoja.append(
+            [
+                "",
+                "",
+                "",
+                "",
+                "AVISO",
+                f"El detalle trae los primeros {len(registros)} de "
+                f"{totales['cantidad']} registros; el total de arriba si cuenta todos.",
+            ]
+        )
 
-    for columna, ancho in zip("ABCDEFGHI", [12, 24, 20, 34, 58, 9, 14, 18, 42]):
+    for columna, ancho in zip(
+        "ABCDEFGHI", [12, 24, 20, 34, 58, 9, 14, 18, 42], strict=True
+    ):
         hoja.column_dimensions[columna].width = ancho
     hoja.freeze_panes = "A2"
 
@@ -581,11 +696,7 @@ def metas(
     usuario: Usuario = Depends(requiere_jefe),
     db: Session = Depends(get_db),
 ):
-    todas = list(
-        db.scalars(
-            select(Meta).order_by(Meta.estado, Meta.fecha_limite.is_(None), Meta.fecha_limite)
-        )
-    )
+    todas = metas_ordenadas(db, incluir_eliminadas=True)
     return templates.TemplateResponse(
         request,
         "metas.html",
@@ -593,6 +704,7 @@ def metas(
             request,
             usuario,
             metas=todas,
+            archivadas=sum(1 for meta in todas if meta.estado == ESTADO_ELIMINADA),
             progreso=progreso_por_id(db, todas),
             equipo=empleados_activos(db),
         ),
@@ -606,13 +718,7 @@ def progreso(
     db: Session = Depends(get_db),
     ver: str = "activas",
 ):
-    todas = list(
-        db.scalars(
-            select(Meta).order_by(
-                Meta.estado, Meta.fecha_limite.is_(None), Meta.fecha_limite
-            )
-        )
-    )
+    todas = metas_ordenadas(db)
     if ver == "activas":
         todas = [meta for meta in todas if meta.estado == "activa"]
 
@@ -695,11 +801,11 @@ def eliminar_meta(
     meta = db.get(Meta, meta_id)
     if meta is None:
         return ir_a("/metas", "Esa meta ya no existe")
-    for registro in list(db.scalars(select(Registro).where(Registro.meta_id == meta_id))):
-        registro.meta_id = None
-    db.delete(meta)
+    # Borrado logico: se archiva en vez de borrar, para no perder los reportes
+    # ni el vinculo con la meta. Se revierte con "Restaurar" o en Editar.
+    meta.estado = ESTADO_ELIMINADA
     db.commit()
-    return ir_a("/metas", "Meta eliminada (los registros se conservan)")
+    return ir_a("/metas", "Meta archivada (sus reportes se conservan y se puede restaurar)")
 
 
 @app.post("/metas/{meta_id}/duplicar")
@@ -755,6 +861,7 @@ def meta_editar_form(
                 db.scalars(
                     select(Registro)
                     .where(Registro.meta_id == meta.id)
+                    .options(*OPCIONES_REGISTRO)
                     .order_by(Registro.fecha.desc(), Registro.id.desc())
                     .limit(50)
                 )
@@ -871,6 +978,8 @@ def resetear_pin(
     if error_pin:
         return ir_a("/equipo", error_pin)
     destino.pin_hash = hash_pin(pin)
+    if destino.usuario == config.ADMIN_USUARIO:
+        borrar_primer_ingreso()
     db.commit()
     return ir_a("/equipo", f"PIN de {destino.nombre} actualizado")
 
@@ -906,12 +1015,19 @@ def persona_detalle(
         return ir_a("/equipo", "Ese usuario no existe")
 
     consulta, filtros = filtrar_registros(str(usuario_id), desde, hasta)
-    registros = list(db.scalars(consulta.limit(300)))
+    totales = totales_registros(db, consulta)
+    registros = list(
+        db.scalars(consulta.options(*OPCIONES_REGISTRO).limit(LIMITE_HISTORIAL))
+    )
 
     metas = list(
         db.scalars(
             select(Meta)
-            .where(or_(Meta.asignado_a == usuario_id, Meta.asignado_a.is_(None)))
+            .where(
+                or_(Meta.asignado_a == usuario_id, Meta.asignado_a.is_(None)),
+                Meta.estado != ESTADO_ELIMINADA,
+            )
+            .options(*OPCIONES_META)
             .order_by(Meta.estado, Meta.fecha_limite.is_(None), Meta.fecha_limite)
         )
     )
@@ -926,9 +1042,12 @@ def persona_detalle(
             registros=registros,
             filtros=filtros,
             metas=progreso_metas(db, metas),
-            total_horas=sum(r.horas for r in registros),
-            dias=len({r.fecha for r in registros}),
-            total_comentarios=sum(1 for r in registros if r.comentario),
+            total=totales["cantidad"],
+            total_horas=totales["horas"],
+            dias=totales["dias"],
+            total_comentarios=totales["comentarios"],
+            mostrados=len(registros),
+            limite=LIMITE_HISTORIAL,
         ),
     )
 
@@ -963,6 +1082,8 @@ def cambiar_mi_pin(
     if error_pin:
         return ir_a("/ayuda", error_pin)
     usuario.pin_hash = hash_pin(pin_nuevo)
+    if usuario.usuario == config.ADMIN_USUARIO:
+        borrar_primer_ingreso()
     db.commit()
     return ir_a("/ayuda", "PIN actualizado")
 

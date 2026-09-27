@@ -52,6 +52,12 @@ ADMIN_NOMBRE = os.environ.get("CG_ADMIN_NOMBRE", "Jefe de División")
 HOST = os.environ.get("CG_HOST", "0.0.0.0")
 PORT = int(os.environ.get("CG_PORT", "8000"))
 
+# Nivel de detalle del log del sistema (DEBUG, INFO, WARNING, ERROR).
+LOG_LEVEL = os.environ.get("CG_LOG_LEVEL", "INFO").upper()
+
+# Dias hacia atras que se puede cargar un reporte (0 = solo el dia de hoy).
+DIAS_ATRASO = int(os.environ.get("CG_DIAS_ATRASO", "30"))
+
 # Respaldos automaticos de la base de datos.
 BACKUP_DIR = Path(os.environ.get("CG_BACKUP_DIR", DATA_DIR / "respaldos"))
 # Cada cuantas horas se hace un respaldo automatico.

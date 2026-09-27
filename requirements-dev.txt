@@ -3,3 +3,6 @@
 # Solo para correr las pruebas
 pytest==8.3.4
 httpx==0.28.1
+
+# Analizador de codigo (ruff check .)
+ruff==0.16.9

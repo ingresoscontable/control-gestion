@@ -9,7 +9,14 @@ from fpdf import FPDF
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .models import Meta, Registro, Usuario
+from .models import (
+    ESTADO_ELIMINADA,
+    OPCIONES_META,
+    OPCIONES_REGISTRO,
+    Meta,
+    Registro,
+    Usuario,
+)
 from .progreso import progreso_metas
 
 MESES = [
@@ -94,7 +101,7 @@ def _tabla(pdf: FPDF, encabezados: list[str], anchos: list[float], filas: list[l
         pdf.set_font("Helvetica", "B", 9)
         pdf.set_fill_color(241, 245, 249)
         pdf.set_text_color(*NEGRO)
-        for texto, ancho in zip(encabezados, anchos):
+        for texto, ancho in zip(encabezados, anchos, strict=True):
             pdf.cell(ancho, 7, texto, border="B", fill=True)
         pdf.ln(7)
         pdf.set_font("Helvetica", "", 9)
@@ -104,7 +111,7 @@ def _tabla(pdf: FPDF, encabezados: list[str], anchos: list[float], filas: list[l
         if pdf.get_y() + 7 > pdf.h - pdf.b_margin - 6:
             pdf.add_page()
             encabezado()
-        for valor, ancho in zip(fila, anchos):
+        for valor, ancho in zip(fila, anchos, strict=True):
             # Un valor puede venir como (texto, color) para pintar la celda.
             color = None
             if isinstance(valor, tuple):
@@ -127,13 +134,17 @@ def _datos_del_mes(db: Session, primer_dia: date, ultimo_dia: date):
         db.scalars(
             select(Registro)
             .where(Registro.fecha >= primer_dia, Registro.fecha <= ultimo_dia)
+            .options(*OPCIONES_REGISTRO)
             .order_by(Registro.fecha, Registro.id)
         )
     )
     personas = list(db.scalars(select(Usuario).order_by(Usuario.nombre)))
     metas = list(
         db.scalars(
-            select(Meta).order_by(
+            select(Meta)
+            .where(Meta.estado != ESTADO_ELIMINADA)
+            .options(*OPCIONES_META)
+            .order_by(
                 Meta.estado, Meta.fecha_limite.is_(None), Meta.fecha_limite
             )
         )

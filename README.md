@@ -60,6 +60,10 @@ administrador. Para desactivarlo, **`desinstalar-arranque.bat`**
 
 Entra y **cambia el PIN de inmediato** en la sección *Ayuda → Cambiar mi PIN*.
 
+Mientras no lo cambies, las credenciales quedan escritas en
+`data/primer-ingreso.txt` por si las necesitás volver a leer. **Ese archivo se
+borra solo** en cuanto el jefe cambia su PIN.
+
 ---
 
 ## Uso desde las otras PC
@@ -88,6 +92,9 @@ Entra y **cambia el PIN de inmediato** en la sección *Ayuda → Cambiar mi PIN*
   y horas) y abre el formulario para ajustarla: sirve para repetir la
   estructura del corte anterior sin volver a cargar todo a mano. La copia
   arranca siempre activa, aunque el original esté cerrado.
+  El botón **Archivar** no borra la meta: la saca de las pantallas y de los
+  reportes pero **conserva todos sus reportes**, y se revierte con **Restaurar**
+  (o desde *Editar*, llevando el estado a *Activa*).
 - *Progreso* → vista con barra de avance por meta, más el promedio y las horas
   acumuladas del equipo.
 - *Panel* → ver quién ya registró hoy y quién falta; ver el avance de cada meta
@@ -114,6 +121,9 @@ Entra y **cambia el PIN de inmediato** en la sección *Ayuda → Cambiar mi PIN*
 
 - *Panel* → elegir la meta, escribir lo que hizo, las horas y el estado, y guardar.
   También ve **el avance de sus metas** con la barra de progreso.
+  Se puede cargar **desde hace 30 días hasta hoy** (ajustable con
+  `CG_DIAS_ATRASO`) y **un solo reporte por día y por meta**: si ya cargaste,
+  editá o borrá el anterior en lugar de duplicarlo.
   En *Mis últimos registros* cada fila tiene un enlace **Repetir**: precarga el
   formulario con esa carga (meta, descripción, horas y estado) pero con la fecha
   de hoy, para no volver a escribir lo mismo todos los días.
@@ -139,6 +149,11 @@ solo: uno al arrancar y otro cada 24 horas, en `data/respaldos/`, conservando
 los últimos 30. Revisa la página **Respaldos** para ver el estado y crear uno a
 mano.
 
+> **Archivos `control.db-wal` y `control.db-shm`:** pueden aparecer al lado de la
+> base. Son parte del modo de escritura de SQLite (WAL), que el sistema usa para
+> que quien está leyendo no se quede esperando a quien está cargando datos.
+> **No los borres a mano**: el sistema los gestiona y los limpia cuando restaura.
+
 **Restaurar:** en la página **Respaldos**, cada archivo tiene un botón
 *Restaurar*. Vuelve la base al estado de ese momento. Antes de reemplazarla el
 sistema deja una copia de seguridad del estado actual (etiqueta
@@ -151,6 +166,18 @@ es decir, **en el mismo disco que la base**. Si se rompe el disco se pierde todo
 junto. La página **Respaldos** muestra un aviso en ese caso. Para guardarlo en
 otro lado (pendrive o carpeta de red) apuntá `CG_BACKUP_DIR` ahí. Aun así,
 conviene copiar esa carpeta a un pendrive o a la nube de vez en cuando.
+
+---
+
+## Registro de eventos (log)
+
+El sistema escribe su actividad en **`data/sistema.log`**: arranques, respaldos
+creados o fallidos, migraciones aplicadas. Gira solo (5 MB × 3 copias) y no
+crece sin límite.
+
+Si el servidor corre oculto (`iniciar-oculto.vbs`), **este archivo es la única
+pista** de que un respaldo automático dejó de funcionar: conviene mirarlo de vez
+en cuando. Para más detalle, la variable `CG_LOG_LEVEL=DEBUG`.
 
 ---
 
@@ -171,6 +198,8 @@ Variables de entorno*) o editando `iniciar.bat`:
 | `CG_BACKUP_DIR`     | `./data/respaldos`           | Carpeta de respaldos (puede ser un pendrive o carpeta de red) |
 | `CG_BACKUP_HORAS`   | `24`                         | Cada cuántas horas se respalda       |
 | `CG_BACKUP_CONSERVAR` | `30`                       | Cuántos respaldos se conservan       |
+| `CG_LOG_LEVEL`      | `INFO`                      | Nivel del log del sistema (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `CG_DIAS_ATRASO`    | `30`                        | Cuántos días hacia atrás se puede cargar un reporte (`0` = solo hoy) |
 
 Ejemplo para guardar los respaldos en un pendrive, dentro de `iniciar.bat`:
 
@@ -191,6 +220,8 @@ call ".venv\Scripts\python.exe" main.py
 ```
 control-gestion/
 ├── main.py                 # arranque del servidor
+├── pyproject.toml          # configuración del analizador de código (ruff)
+├── .github/workflows/      # pruebas automáticas en cada push
 ├── instalar.bat            # instalación en Windows
 ├── iniciar.bat             # arranque en Windows (con ventana)
 ├── iniciar-oculto.vbs      # arranque en segundo plano (sin ventana)
@@ -237,14 +268,19 @@ Windows 7 solo soporta hasta Python 3.8.10, y este proyecto pide `uvicorn 0.34` 
 `pydantic 2.13`, que necesitan Python 3.9+. Habría que fijar versiones anteriores
 y ajustar anotaciones del código. Avisame y armo esa variante.
 
-## Pruebas (desarrollo)
+## Pruebas y chequeos (desarrollo)
 
 ```bash
 python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements-dev.txt   # Windows
 .venv/bin/python -m pip install -r requirements-dev.txt       # Linux/Mac
-.venv/bin/python -m pytest tests -v
+.venv/Scripts/python -m pytest tests -v                       # Windows
+.venv/bin/python -m pytest tests -v                           # Linux/Mac
+.venv/Scripts/ruff check .                                    # analizador de código
 ```
+
+Las mismas dos comandas corren solas en GitHub Actions con cada push
+(`.github/workflows/ci.yml`).
 
 ---
 

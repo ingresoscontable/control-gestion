@@ -54,7 +54,8 @@
 
       <label>
         Fecha
-        <input type="date" name="fecha" value="{{ hoy.isoformat() }}">
+        <input type="date" name="fecha" value="{{ hoy.isoformat() }}"
+               min="{{ limite_carga.isoformat() }}" max="{{ hoy.isoformat() }}">
       </label>
 
       <label>

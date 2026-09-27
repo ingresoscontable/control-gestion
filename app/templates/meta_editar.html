@@ -55,6 +55,7 @@
       <select name="estado">
         <option value="activa" {% if meta.estado == 'activa' %}selected{% endif %}>Activa</option>
         <option value="cerrada" {% if meta.estado == 'cerrada' %}selected{% endif %}>Cerrada</option>
+        <option value="eliminada" {% if meta.estado == 'eliminada' %}selected{% endif %}>Archivada</option>
       </select>
     </label>
 

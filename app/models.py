@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, String, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
 
 from .database import Base
 
@@ -18,7 +18,11 @@ ESTADOS_REGISTRO = [
     ("bloqueado", "Bloqueado"),
 ]
 
-ESTADOS_META = ["activa", "cerrada"]
+ESTADOS_META = ["activa", "cerrada", "eliminada"]
+
+# Estado de archivo: la meta desaparece de las pantallas pero conserva sus
+# reportes y se puede restaurar.
+ESTADO_ELIMINADA = "eliminada"
 
 
 class Usuario(Base):
@@ -33,7 +37,7 @@ class Usuario(Base):
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
-    registros: Mapped[list["Registro"]] = relationship(
+    registros: Mapped[list[Registro]] = relationship(
         back_populates="usuario", foreign_keys="Registro.usuario_id"
     )
 
@@ -59,8 +63,10 @@ class Meta(Base):
     estado: Mapped[str] = mapped_column(String(20), default="activa")
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
+    __table_args__ = (Index("ix_metas_estado_fecha_limite", "estado", "fecha_limite"),)
+
     asignado: Mapped[Usuario | None] = relationship(foreign_keys=[asignado_a])
-    registros: Mapped[list["Registro"]] = relationship(back_populates="meta")
+    registros: Mapped[list[Registro]] = relationship(back_populates="meta")
 
 
 class Registro(Base):
@@ -78,7 +84,24 @@ class Registro(Base):
     comentado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
+    __table_args__ = (
+        # El calendario, el resumen semanal y los reportes filtran por fecha;
+        # el historial de cada persona filtra por usuario y despues por fecha.
+        Index("ix_registros_fecha", "fecha"),
+        Index("ix_registros_usuario_fecha", "usuario_id", "fecha"),
+        # Un reporte por persona, dia y meta: corta los dobles clic y los
+        # "Repetir" seguidos. (SQLite trata los NULL como distintos, asi que
+        # los reportes "sin meta" los cubre la comprobacion de la aplicacion.)
+        Index("ix_registros_unico", "usuario_id", "fecha", "meta_id", unique=True),
+    )
+
     usuario: Mapped[Usuario] = relationship(
         back_populates="registros", foreign_keys=[usuario_id]
     )
     meta: Mapped[Meta | None] = relationship(back_populates="registros")
+
+
+# Sin esto cada fila de un listado dispara su propia consulta para leer el
+# usuario o el responsable (1 consulta por fila al renderizar).
+OPCIONES_REGISTRO = (selectinload(Registro.usuario), selectinload(Registro.meta))
+OPCIONES_META = (selectinload(Meta.asignado),)

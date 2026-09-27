@@ -309,3 +309,104 @@ def generar_pdf_mensual(db: Session, anio: int, mes: int) -> bytes:
     pdf.cell(0, 6, f"Generado el {datetime.now():%d/%m/%Y %H:%M}")
 
     return bytes(pdf.output())
+
+
+def generar_pdf_persona(db: Session, persona: Usuario, anio: int, mes: int) -> bytes:
+    """PDF mensual de una sola persona: lo que cargo en el mes y sus metas.
+
+    Es el mismo mes y el mismo detalle del reporte general, pero acotado a una
+    persona, para que el jefe se lo pueda mandar sin filtrar a mano.
+    """
+    primer_dia = date(anio, mes, 1)
+    ultimo_dia = date(anio, mes, calendar.monthrange(anio, mes)[1])
+
+    registros, _personas, metas = _datos_del_mes(db, primer_dia, ultimo_dia)
+    registros = [r for r in registros if r.usuario_id == persona.id]
+
+    pdf = ReportePDF(f"{persona.nombre} - {MESES[mes - 1].capitalize()} {anio}")
+    pdf.add_page()
+
+    horas = sum(r.horas for r in registros)
+    dias_con_datos = len({r.fecha for r in registros})
+    completados = sum(1 for r in registros if r.estado == "completado")
+
+    _titulo_seccion(pdf, "Resumen del mes")
+    pdf.set_font("Helvetica", "", 10)
+    resumen = [
+        f"Persona: {persona.nombre} ({persona.cargo or ('Jefe' if persona.es_jefe else 'Empleado')})",
+        f"Periodo: {primer_dia.strftime('%d/%m/%Y')} al {ultimo_dia.strftime('%d/%m/%Y')}",
+        f"Reportes cargados: {len(registros)}   |   Dias con reportes: {dias_con_datos}",
+        f"Horas acumuladas: {horas:.1f}   |   Reportes completados: {completados}",
+    ]
+    for linea in resumen:
+        pdf.cell(0, 6, _limpiar(linea))
+        pdf.ln(6)
+
+    propias = [
+        m
+        for m in metas
+        if m.asignado_a == persona.id or m.asignado_a is None
+    ]
+    avance_por_meta = {fila["meta"].id: fila for fila in progreso_metas(db, propias)}
+
+    def color_avance(avance: int):
+        if avance >= 100:
+            return VERDE
+        if avance < 50:
+            return AMBAR
+        return None
+
+    filas_metas = []
+    for meta in propias[:25]:
+        avance = (avance_por_meta.get(meta.id) or {}).get("avance", 0)
+        filas_metas.append(
+            [
+                meta.titulo,
+                meta.fecha_limite.strftime("%d/%m/%Y") if meta.fecha_limite else "-",
+                (f"{avance}%", color_avance(avance)),
+                meta.estado,
+            ]
+        )
+
+    _titulo_seccion(pdf, "Metas del periodo")
+    _tabla(
+        pdf,
+        ["Meta", "Plazo", "Avance", "Estado"],
+        [78, 30, 30, 42],
+        filas_metas,
+    )
+
+    filas_detalle = [
+        [
+            r.fecha.strftime("%d/%m/%Y"),
+            r.meta.titulo if r.meta else "-",
+            r.descripcion,
+            f"{r.horas:.1f}",
+            r.estado.replace("_", " "),
+        ]
+        for r in registros[:MAX_DETALLE]
+    ]
+
+    _titulo_seccion(pdf, "Detalle de reportes diarios")
+    _tabla(
+        pdf,
+        ["Fecha", "Meta", "Que hizo", "Horas", "Estado"],
+        [24, 38, 74, 14, 30],
+        filas_detalle,
+    )
+    if len(registros) > MAX_DETALLE:
+        pdf.set_font("Helvetica", "I", 8)
+        pdf.set_text_color(*GRIS)
+        pdf.cell(
+            0,
+            6,
+            _limpiar(f"Se listan los primeros {MAX_DETALLE} de {len(registros)} reportes."),
+        )
+        pdf.ln(6)
+
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(*GRIS)
+    pdf.cell(0, 6, f"Generado el {datetime.now():%d/%m/%Y %H:%M}")
+
+    return bytes(pdf.output())

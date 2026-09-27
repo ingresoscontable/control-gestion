@@ -58,6 +58,10 @@ LOG_LEVEL = os.environ.get("CG_LOG_LEVEL", "INFO").upper()
 # Dias hacia atras que se puede cargar un reporte (0 = solo el dia de hoy).
 DIAS_ATRASO = int(os.environ.get("CG_DIAS_ATRASO", "30"))
 
+# Umbrales de la alerta de carga excesiva (aviso, no bloquea el guardado).
+HORAS_DIA = float(os.environ.get("CG_HORAS_DIA", "8"))
+HORAS_SEMANA = float(os.environ.get("CG_HORAS_SEMANA", "40"))
+
 # Respaldos automaticos de la base de datos.
 BACKUP_DIR = Path(os.environ.get("CG_BACKUP_DIR", DATA_DIR / "respaldos"))
 # Cada cuantas horas se hace un respaldo automatico.

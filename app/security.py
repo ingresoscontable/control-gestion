@@ -10,9 +10,19 @@ import hmac
 import os
 import socket
 import subprocess
+import threading
+import time
+
+from . import config
 
 ITERACIONES = 120_000
 ALGORITMO = "sha256"
+
+# Login: cuantos fallos seguidos aguanta y cuanto se bloquea.
+LOGIN_INTENTOS = 5
+LOGIN_BLOQUEO = 300.0  # 5 minutos
+LOGIN_BLOQUEO_MAXIMO = 1800.0  # 30 minutos, con backoff
+LOGIN_VENTANA = 900.0  # los fallos se olvidan a los 15 minutos
 
 
 def hash_pin(pin: str) -> str:
@@ -50,6 +60,89 @@ def valida_pin(pin: str) -> str | None:
     if not 4 <= len(pin) <= 10:
         return "El PIN debe tener entre 4 y 10 dígitos."
     return None
+
+
+class LimitadorDeIntentos:
+    """Bloquea el login tras varios fallos seguidos de la misma IP y usuario.
+
+    Los endpoints son `def` y corren en el threadpool, asi que todo lo que
+    toca el contador va bajo un Lock. Vive en memoria: al reiniciar el
+    proceso se olvida, que es lo que corresponde. Cada vez que vuelve a
+    bloquear, el bloqueo se dobla (backoff) hasta el tope.
+    """
+
+    def __init__(
+        self,
+        intentos: int = LOGIN_INTENTOS,
+        bloqueo: float = LOGIN_BLOQUEO,
+        bloqueo_maximo: float = LOGIN_BLOQUEO_MAXIMO,
+        ventana: float = LOGIN_VENTANA,
+    ):
+        self.intentos = intentos
+        self.bloqueo = bloqueo
+        self.bloqueo_maximo = bloqueo_maximo
+        self.ventana = ventana
+        self._fallos: dict[str, list[float]] = {}
+        self._bloqueos: dict[str, float] = {}
+        self._ciclos: dict[str, int] = {}
+        self._lock = threading.Lock()
+
+    def restante(self, clave: str) -> float:
+        """Segundos que faltan para volver a dejar intentar (0 = libre)."""
+        with self._lock:
+            faltan = self._bloqueos.get(clave, 0.0) - time.monotonic()
+            return faltan if faltan > 0 else 0.0
+
+    def registrar_fallo(self, clave: str) -> float:
+        """Suma un fallo y devuelve los segundos de bloqueo (0 = sigue libre)."""
+        with self._lock:
+            ahora = time.monotonic()
+            recientes = [
+                t for t in self._fallos.get(clave, ()) if ahora - t <= self.ventana
+            ]
+            recientes.append(ahora)
+            self._fallos[clave] = recientes
+            if len(recientes) < self.intentos:
+                return 0.0
+            ciclo = self._ciclos.get(clave, 0) + 1
+            self._ciclos[clave] = ciclo
+            duracion = min(self.bloqueo * (2 ** (ciclo - 1)), self.bloqueo_maximo)
+            self._bloqueos[clave] = ahora + duracion
+            del self._fallos[clave]
+            return duracion
+
+    def limpiar(self, clave: str) -> None:
+        """Un login bien hecho empieza de cero con esa clave."""
+        with self._lock:
+            self._fallos.pop(clave, None)
+            self._bloqueos.pop(clave, None)
+            self._ciclos.pop(clave, None)
+
+
+intentos_login = LimitadorDeIntentos()
+
+# Si el PIN todavia es el de fabrica (CG_ADMIN_PIN), quien entra tiene que
+# cambiarlo antes de usar el sistema. PBKDF2 con 120.000 iteraciones cuesta
+# ~100 ms, asi que el resultado se guarda en memoria por usuario.
+_pins_de_fabrica: dict[int, bool] = {}
+_lock_pins = threading.Lock()
+
+
+def es_pin_de_fabrica(usuario_id: int, pin_hash: str) -> bool:
+    with _lock_pins:
+        guardado = _pins_de_fabrica.get(usuario_id)
+    if guardado is not None:
+        return guardado
+    resultado = verificar_pin(config.ADMIN_PIN, pin_hash)
+    with _lock_pins:
+        _pins_de_fabrica[usuario_id] = resultado
+    return resultado
+
+
+def olvidar_pin_de_fabrica(usuario_id: int) -> None:
+    """Se llama cuando el usuario cambia su PIN."""
+    with _lock_pins:
+        _pins_de_fabrica.pop(usuario_id, None)
 
 
 def _ips_desde_ifconfig() -> set[str]:

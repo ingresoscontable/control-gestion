@@ -188,7 +188,12 @@ td.comentario { min-width: 220px; }
 
 .filtros { display: flex; gap: 14px; flex-wrap: wrap; align-items: end; }
 .filtros label { min-width: 170px; }
-.filtros-botones { display: flex; gap: 10px; }
+.filtros label.ancho { flex: 1 1 260px; }
+.filtros label.ancho input { width: 100%; }
+.filtros-botones { display: flex; gap: 10px; flex-wrap: wrap; }
+
+/* Paginación de los listados largos */
+.paginacion { display: flex; gap: 12px; align-items: center; margin: 14px 0 4px; }
 
 .links { padding-left: 20px; }
 .links code { font-size: 15px; background: #f1f5f9; padding: 4px 8px; border-radius: 6px; }

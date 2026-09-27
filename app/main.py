@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import calendar
+import logging
 from contextlib import asynccontextmanager, suppress
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import RedirectResponse, Response
@@ -20,28 +21,53 @@ from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import backup, config, reportes
-from .database import Base, engine, get_db
+from . import auditoria, backup, config, reportes
+from .database import Base, SessionLocal, engine, get_db
 from .metricas import calendario_mes, horas_por_semana, resumen_semanal
 from .migraciones import aplicar_migraciones
 from .models import (
+    ACCIONES_AUDITORIA,
     ESTADO_ELIMINADA,
     ESTADOS_META,
     ESTADOS_REGISTRO,
+    OPCIONES_AUDITORIA,
     OPCIONES_META,
     OPCIONES_REGISTRO,
     ROL_EMPLEADO,
     ROL_JEFE,
+    Auditoria,
     Meta,
     Registro,
     Usuario,
 )
 from .progreso import metas_vencidas, progreso_metas, progreso_por_id
-from .security import hash_pin, ips_locales, valida_pin, verificar_pin
+from .security import (
+    es_pin_de_fabrica,
+    hash_pin,
+    intentos_login,
+    ips_locales,
+    olvidar_pin_de_fabrica,
+    valida_pin,
+    verificar_pin,
+)
 from .seed import borrar_primer_ingreso, crear_datos_iniciales
 
 APP_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
+
+logger = logging.getLogger(__name__)
+
+
+def _auditar_respaldo_automatico(nombre: str) -> None:
+    """Firma en la auditoria los respaldos que el sistema hace solo."""
+    db = SessionLocal()
+    try:
+        auditoria.registrar(db, None, "crear_respaldo", "respaldo", resumen=nombre)
+        db.commit()
+    except Exception:  # noqa: BLE001 - no tumbar el respaldo por un fallo de escritura
+        logger.exception("No se pudo registrar en la auditoria el respaldo %s", nombre)
+    finally:
+        db.close()
 
 
 @asynccontextmanager
@@ -49,7 +75,9 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     aplicar_migraciones()
     crear_datos_iniciales()
-    tarea_respaldo = asyncio.create_task(backup.respaldo_periodico())
+    tarea_respaldo = asyncio.create_task(
+        backup.respaldo_periodico(_auditar_respaldo_automatico)
+    )
     try:
         yield
     finally:
@@ -94,9 +122,22 @@ def usuario_actual(request: Request, db: Session = Depends(get_db)) -> Usuario |
     return usuario
 
 
-def requiere_login(usuario: Usuario | None = Depends(usuario_actual)) -> Usuario:
+# Rutas que siguen disponibles con el PIN de fabrica: sin ellas no habria
+# forma de cambiarlo sin quedar afuera del sistema.
+RUTAS_LIBRES_PIN = ("/ayuda", "/mi-pin")
+
+
+def requiere_login(
+    request: Request,
+    usuario: Usuario | None = Depends(usuario_actual),
+) -> Usuario:
     if usuario is None:
         raise Redireccionar("/login")
+    en_ruta_libre = request.url.path.startswith(RUTAS_LIBRES_PIN)
+    if es_pin_de_fabrica(usuario.id, usuario.pin_hash) and not en_ruta_libre:
+        raise Redireccionar(
+            "/ayuda?msg=" + quote("Tu PIN es el de fábrica: cambialo antes de seguir")
+        )
     return usuario
 
 
@@ -115,16 +156,38 @@ def ir_a(destino: str, msg: str = "") -> RedirectResponse:
 
 PAGINAS_VALIDAS = ("/", "/registros")
 
-# Cuantos registros trae cada listado antes de cortar. Los totales se calculan
-# aparte (totales_registros) para no mostrar una suma incompleta.
-LIMITE_LISTADO = 500
+# Cuantos registros entra en una pantalla. Antes se tiraban los primeros 500 de
+# una; ahora se pagina de 50 en 50 y los totales siguen siendo de TODOS los
+# registros que cumplen el filtro (totales_registros).
+POR_PAGINA = 50
 LIMITE_HISTORIAL = 300
 LIMITE_EXPORTACION = 5000
 
 
 def volver_a(valor: str, por_defecto: str = "/") -> str:
-    """Evita redirecciones abiertas: solo se vuelve a paginas conocidas."""
-    return valor if valor in PAGINAS_VALIDAS else por_defecto
+    """Evita redirecciones abiertas: solo se vuelve a paginas conocidas.
+
+    Acepta querystring (por ejemplo ``/registros?page=3``) porque las paginas
+    de listado pasan la direccion entera para volver al mismo lugar.
+    """
+    base = (valor or "").split("?", 1)[0]
+    return valor if base in PAGINAS_VALIDAS else por_defecto
+
+
+def pagina_de(valor: str) -> int:
+    """Numero de pagina pedido en la URL (1 si viene vacio o mal escrito)."""
+    return int(valor) if (valor or "").isdigit() and int(valor) > 0 else 1
+
+
+def qs_filtros(filtros: dict) -> str:
+    """Querystring de los filtros activos, para no perderlos al paginar."""
+    datos = {}
+    for clave, valor in filtros.items():
+        if isinstance(valor, date):
+            datos[clave] = valor.isoformat()
+        elif valor not in ("", None):
+            datos[clave] = valor
+    return urlencode(datos)
 
 
 # --------------------------------------------------------------------------
@@ -242,10 +305,17 @@ def empleados_activos(db: Session) -> list[Usuario]:
     )
 
 
-def filtrar_registros(usuario_id: str, desde: str, hasta: str, meta_id: str = ""):
+def filtrar_registros(
+    usuario_id: str,
+    desde: str,
+    hasta: str,
+    meta_id: str = "",
+    texto: str = "",
+    estado: str = "",
+):
     """Arma la consulta de registros y los filtros aplicados.
 
-    Se usa tanto en la página de registros como en la exportación a Excel
+    Se usa tanto en la pagina de registros como en la exportacion a Excel
     para que ambos muestren exactamente lo mismo.
     """
     consulta = select(Registro).order_by(Registro.fecha.desc(), Registro.id.desc())
@@ -267,6 +337,16 @@ def filtrar_registros(usuario_id: str, desde: str, hasta: str, meta_id: str = ""
     if f_hasta:
         consulta = consulta.where(Registro.fecha <= f_hasta)
         filtros["hasta"] = f_hasta
+
+    busca = (texto or "").strip()
+    if busca:
+        consulta = consulta.where(Registro.descripcion.ilike(f"%{busca}%"))
+        filtros["texto"] = busca
+
+    estado = (estado or "").strip()
+    if estado in {clave for clave, _ in ESTADOS_REGISTRO}:
+        consulta = consulta.where(Registro.estado == estado)
+        filtros["estado"] = estado
 
     return consulta, filtros
 
@@ -294,6 +374,47 @@ def totales_registros(db: Session, consulta) -> dict:
     }
 
 
+def horas_entre(db: Session, usuario_id: int, desde: date, hasta: date) -> float:
+    """Horas cargadas por una persona en un rango de fechas (inclusive)."""
+    return float(
+        db.scalar(
+            select(func.coalesce(func.sum(Registro.horas), 0.0)).where(
+                Registro.usuario_id == usuario_id,
+                Registro.fecha >= desde,
+                Registro.fecha <= hasta,
+            )
+        )
+        or 0.0
+    )
+
+
+def aviso_de_carga(db: Session, usuario_id: int, dia: date) -> str:
+    """Avisa si la carga recien hecha se paso del dia o de la semana.
+
+    No frenan el guardado: es un cartel en la pantalla, no una validacion.
+    """
+    inicio_semana = dia - timedelta(days=dia.weekday())
+    avisos = []
+
+    horas_dia = horas_entre(db, usuario_id, dia, dia)
+    if horas_dia > config.HORAS_DIA:
+        avisos.append(
+            f"{horas_dia:.1f} h el {dia.strftime('%d/%m/%Y')} "
+            f"(aviso por superar {config.HORAS_DIA:g} h en un dia)"
+        )
+
+    horas_semana = horas_entre(db, usuario_id, inicio_semana, inicio_semana + timedelta(days=6))
+    if horas_semana > config.HORAS_SEMANA:
+        avisos.append(
+            f"{horas_semana:.1f} h en la semana "
+            f"(aviso por superar {config.HORAS_SEMANA:g} h)"
+        )
+
+    if not avisos:
+        return ""
+    return "Cargaste " + "; ".join(avisos) + ". Revisalo si no es un error de tipeo."
+
+
 # --------------------------------------------------------------------------
 # Login / logout
 # --------------------------------------------------------------------------
@@ -311,16 +432,42 @@ def login(
     pin: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    ip = request.client.host if request.client else "?"
+    clave = f"{ip}|{usuario_input.strip().lower()}"
+
+    espera = intentos_login.restante(clave)
+    if espera > 0:
+        return _login_bloqueado(request, usuario_input, espera)
+
     user = db.scalar(select(Usuario).where(Usuario.usuario == usuario_input.strip()))
     if user is None or not user.activo or not verificar_pin(pin, user.pin_hash):
+        bloqueo = intentos_login.registrar_fallo(clave)
+        if bloqueo:
+            return _login_bloqueado(request, usuario_input, bloqueo)
         return templates.TemplateResponse(
             request,
             "login.html",
             contexto(request, None, error="Usuario o PIN incorrecto.", usuario_input=usuario_input),
             status_code=401,
         )
+    intentos_login.limpiar(clave)
     request.session["usuario_id"] = user.id
     return ir_a("/", f"Hola {user.nombre}")
+
+
+def _login_bloqueado(request: Request, usuario_input: str, espera: float) -> Response:
+    minutos = max(1, round(espera / 60))
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        contexto(
+            request,
+            None,
+            error=f"Demasiados intentos fallidos. Volvé a intentar en {minutos} minuto(s).",
+            usuario_input=usuario_input,
+        ),
+        status_code=429,
+    )
 
 
 @app.post("/logout")
@@ -469,6 +616,12 @@ def crear_registro(
         )
     )
     db.commit()
+
+    # Aviso de carga excesiva: se calcula despues de guardar, asi que el
+    # registro ya quedo; solo se le muestra el cartel a la persona.
+    aviso = aviso_de_carga(db, usuario.id, dia)
+    if aviso:
+        return ir_a("/", f"Registro guardado. {aviso}")
     return ir_a("/", "Registro guardado")
 
 
@@ -481,11 +634,20 @@ def listar_registros(
     meta_id: str = "",
     desde: str = "",
     hasta: str = "",
+    texto: str = "",
+    estado: str = "",
+    page: str = "",
 ):
-    consulta, filtros = filtrar_registros(usuario_id, desde, hasta, meta_id)
+    consulta, filtros = filtrar_registros(usuario_id, desde, hasta, meta_id, texto, estado)
     totales = totales_registros(db, consulta)
+    paginas = max(1, -(-totales["cantidad"] // POR_PAGINA))
+    pagina = min(pagina_de(page), paginas)
     registros = list(
-        db.scalars(consulta.options(*OPCIONES_REGISTRO).limit(LIMITE_LISTADO))
+        db.scalars(
+            consulta.options(*OPCIONES_REGISTRO)
+            .offset((pagina - 1) * POR_PAGINA)
+            .limit(POR_PAGINA)
+        )
     )
     return templates.TemplateResponse(
         request,
@@ -497,10 +659,16 @@ def listar_registros(
             equipo=list(db.scalars(select(Usuario).order_by(Usuario.nombre))),
             metas=metas_ordenadas(db),
             filtros=filtros,
+            qs=qs_filtros(filtros),
+            estados=ESTADOS_REGISTRO,
+            pagina=pagina,
+            paginas=paginas,
+            por_pagina=POR_PAGINA,
             total=totales["cantidad"],
             total_horas=totales["horas"],
+            total_dias=totales["dias"],
+            total_comentarios=totales["comentarios"],
             mostrados=len(registros),
-            limite=LIMITE_LISTADO,
             meses=reportes.MESES,
         ),
     )
@@ -514,9 +682,11 @@ def exportar_registros(
     meta_id: str = "",
     desde: str = "",
     hasta: str = "",
+    texto: str = "",
+    estado: str = "",
 ):
     """Descarga en Excel los registros que cumplen los filtros elegidos."""
-    consulta, _filtros = filtrar_registros(usuario_id, desde, hasta, meta_id)
+    consulta, _filtros = filtrar_registros(usuario_id, desde, hasta, meta_id, texto, estado)
     totales = totales_registros(db, consulta)
     registros = list(
         db.scalars(consulta.options(*OPCIONES_REGISTRO).limit(LIMITE_EXPORTACION))
@@ -656,6 +826,14 @@ def eliminar_registro(
     if not usuario.es_jefe and registro.usuario_id != usuario.id:
         return ir_a(destino, "No puedes eliminar registros de otra persona")
     db.delete(registro)
+    auditoria.registrar(
+        db,
+        usuario,
+        "eliminar_registro",
+        "registro",
+        registro.id,
+        f"{registro.fecha.isoformat()}: {registro.descripcion}"[:255],
+    )
     db.commit()
     return ir_a(destino, "Registro eliminado")
 
@@ -683,6 +861,14 @@ def comentar_registro(
         registro.comentario = ""
         registro.comentado_en = None
         mensaje = "Comentario borrado"
+    auditoria.registrar(
+        db,
+        usuario,
+        "comentar_registro",
+        "registro",
+        registro.id,
+        (texto or "borro el comentario")[:255],
+    )
     db.commit()
     return ir_a(destino, mensaje)
 
@@ -761,16 +947,16 @@ def crear_meta(
     if id_asignado is not None and db.get(Usuario, id_asignado) is None:
         id_asignado = None
 
-    db.add(
-        Meta(
-            titulo=titulo,
-            descripcion=descripcion.strip(),
-            asignado_a=id_asignado,
-            fecha_inicio=parse_fecha(fecha_inicio),
-            fecha_limite=parse_fecha(fecha_limite),
-            horas_estimadas=parse_numero(horas_estimadas),
-        )
+    meta = Meta(
+        titulo=titulo,
+        descripcion=descripcion.strip(),
+        asignado_a=id_asignado,
+        fecha_inicio=parse_fecha(fecha_inicio),
+        fecha_limite=parse_fecha(fecha_limite),
+        horas_estimadas=parse_numero(horas_estimadas),
     )
+    db.add(meta)
+    auditoria.registrar(db, usuario, "crear_meta", "meta", resumen=titulo)
     db.commit()
     return ir_a("/metas", "Meta creada")
 
@@ -788,6 +974,9 @@ def cambiar_estado_meta(
     if estado not in ESTADOS_META:
         return ir_a("/metas", "Estado inválido")
     meta.estado = estado
+    auditoria.registrar(
+        db, usuario, "editar_meta", "meta", meta.id, f"{meta.titulo} -> {estado}"
+    )
     db.commit()
     return ir_a("/metas", f"Meta marcada como {estado}")
 
@@ -804,6 +993,7 @@ def eliminar_meta(
     # Borrado logico: se archiva en vez de borrar, para no perder los reportes
     # ni el vinculo con la meta. Se revierte con "Restaurar" o en Editar.
     meta.estado = ESTADO_ELIMINADA
+    auditoria.registrar(db, usuario, "archivar_meta", "meta", meta.id, meta.titulo)
     db.commit()
     return ir_a("/metas", "Meta archivada (sus reportes se conservan y se puede restaurar)")
 
@@ -834,6 +1024,13 @@ def duplicar_meta(
         estado="activa",
     )
     db.add(copia)
+    auditoria.registrar(
+        db,
+        usuario,
+        "duplicar_meta",
+        "meta",
+        resumen=f"Copia de: {original.titulo}",
+    )
     db.commit()
     return ir_a(f"/metas/{copia.id}/editar", "Meta duplicada, ajuste titulo y fechas")
 
@@ -903,6 +1100,7 @@ def meta_editar(
     meta.horas_estimadas = parse_numero(horas_estimadas)
     if estado in ESTADOS_META:
         meta.estado = estado
+    auditoria.registrar(db, usuario, "editar_meta", "meta", meta.id, meta.titulo)
     db.commit()
     return ir_a("/metas", "Meta actualizada")
 
@@ -951,15 +1149,15 @@ def crear_usuario(
     if rol not in {ROL_JEFE, ROL_EMPLEADO}:
         rol = ROL_EMPLEADO
 
-    db.add(
-        Usuario(
-            nombre=nombre,
-            usuario=login_nombre,
-            cargo=cargo.strip(),
-            pin_hash=hash_pin(pin),
-            rol=rol,
-        )
+    nuevo = Usuario(
+        nombre=nombre,
+        usuario=login_nombre,
+        cargo=cargo.strip(),
+        pin_hash=hash_pin(pin),
+        rol=rol,
     )
+    db.add(nuevo)
+    auditoria.registrar(db, usuario, "crear_usuario", "usuario", resumen=login_nombre)
     db.commit()
     return ir_a("/equipo", f"Usuario {nombre} creado")
 
@@ -978,8 +1176,10 @@ def resetear_pin(
     if error_pin:
         return ir_a("/equipo", error_pin)
     destino.pin_hash = hash_pin(pin)
+    olvidar_pin_de_fabrica(destino.id)
     if destino.usuario == config.ADMIN_USUARIO:
         borrar_primer_ingreso()
+    auditoria.registrar(db, usuario, "cambiar_pin", "usuario", destino.id, destino.nombre)
     db.commit()
     return ir_a("/equipo", f"PIN de {destino.nombre} actualizado")
 
@@ -996,6 +1196,14 @@ def alternar_activo(
     if destino.id == usuario.id:
         return ir_a("/equipo", "No puedes desactivar tu propio usuario")
     destino.activo = not destino.activo
+    auditoria.registrar(
+        db,
+        usuario,
+        "cambiar_estado_usuario",
+        "usuario",
+        destino.id,
+        f"{destino.nombre}: {'activo' if destino.activo else 'inactivo'}",
+    )
     db.commit()
     return ir_a("/equipo", f"{destino.nombre} {'activado' if destino.activo else 'desactivado'}")
 
@@ -1041,6 +1249,9 @@ def persona_detalle(
             persona=persona,
             registros=registros,
             filtros=filtros,
+            # Solo fechas: usuario_id ya viene puesto en la direccion de la
+            # ficha y no hace falta repetirlo en los enlaces.
+            qs=qs_filtros({k: v for k, v in filtros.items() if k != "usuario_id"}),
             metas=progreso_metas(db, metas),
             total=totales["cantidad"],
             total_horas=totales["horas"],
@@ -1048,6 +1259,111 @@ def persona_detalle(
             total_comentarios=totales["comentarios"],
             mostrados=len(registros),
             limite=LIMITE_HISTORIAL,
+            meses=reportes.MESES,
+        ),
+    )
+
+
+@app.get("/personas/{usuario_id}/reporte.pdf")
+def reporte_persona_pdf(
+    usuario_id: int,
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+    anio: str = "",
+    mes: str = "",
+):
+    """PDF mensual de una persona, para enviarselo desde su ficha."""
+    persona = db.get(Usuario, usuario_id)
+    if persona is None:
+        return ir_a("/equipo", "Ese usuario no existe")
+
+    hoy = date.today()
+    try:
+        anio_num = int(anio) if anio else hoy.year
+        mes_num = int(mes) if mes else hoy.month
+    except ValueError:
+        anio_num, mes_num = hoy.year, hoy.month
+    if not 2000 <= anio_num <= 2100 or not 1 <= mes_num <= 12:
+        return ir_a(f"/personas/{persona.id}", "Periodo invalido")
+
+    pdf = reportes.generar_pdf_persona(db, persona, anio_num, mes_num)
+    nombre = f"reporte_{persona.usuario}_{anio_num}-{mes_num:02d}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
+@app.get("/auditoria")
+def auditoria_pagina(
+    request: Request,
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+    usuario_id: str = "",
+    desde: str = "",
+    hasta: str = "",
+    accion: str = "",
+    page: str = "",
+):
+    """Quien hizo que: la trazabilidad de las acciones que cambian datos."""
+    consulta = select(Auditoria).order_by(Auditoria.fecha.desc(), Auditoria.id.desc())
+    filtros: dict = {}
+
+    if (usuario_id or "").isdigit():
+        consulta = consulta.where(Auditoria.usuario_id == int(usuario_id))
+        filtros["usuario_id"] = int(usuario_id)
+
+    f_desde = parse_fecha(desde)
+    if f_desde:
+        consulta = consulta.where(
+            Auditoria.fecha >= datetime(f_desde.year, f_desde.month, f_desde.day)
+        )
+        filtros["desde"] = f_desde
+
+    f_hasta = parse_fecha(hasta)
+    if f_hasta:
+        consulta = consulta.where(
+            Auditoria.fecha
+            < datetime(f_hasta.year, f_hasta.month, f_hasta.day) + timedelta(days=1)
+        )
+        filtros["hasta"] = f_hasta
+
+    accion = (accion or "").strip()
+    if accion in {clave for clave, _ in ACCIONES_AUDITORIA}:
+        consulta = consulta.where(Auditoria.accion == accion)
+        filtros["accion"] = accion
+
+    cantidad = int(
+        db.scalar(consulta.with_only_columns(func.count(Auditoria.id)).order_by(None))
+        or 0
+    )
+    paginas = max(1, -(-cantidad // POR_PAGINA))
+    pagina = min(pagina_de(page), paginas)
+    filas = list(
+        db.scalars(
+            consulta.options(*OPCIONES_AUDITORIA)
+            .offset((pagina - 1) * POR_PAGINA)
+            .limit(POR_PAGINA)
+        )
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "auditoria.html",
+        contexto(
+            request,
+            usuario,
+            filas=filas,
+            equipo=list(db.scalars(select(Usuario).order_by(Usuario.nombre))),
+            acciones=ACCIONES_AUDITORIA,
+            etiquetas=dict(ACCIONES_AUDITORIA),
+            filtros=filtros,
+            qs=qs_filtros(filtros),
+            pagina=pagina,
+            paginas=paginas,
+            total=cantidad,
+            mostrados=len(filas),
         ),
     )
 
@@ -1082,8 +1398,10 @@ def cambiar_mi_pin(
     if error_pin:
         return ir_a("/ayuda", error_pin)
     usuario.pin_hash = hash_pin(pin_nuevo)
+    olvidar_pin_de_fabrica(usuario.id)
     if usuario.usuario == config.ADMIN_USUARIO:
         borrar_primer_ingreso()
+    auditoria.registrar(db, usuario, "cambiar_pin", "usuario", usuario.id, usuario.nombre)
     db.commit()
     return ir_a("/ayuda", "PIN actualizado")
 
@@ -1113,12 +1431,17 @@ def respaldos(
 
 
 @app.post("/respaldos/ahora")
-def respaldo_ahora(usuario: Usuario = Depends(requiere_jefe)):
+def respaldo_ahora(
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+):
     try:
         ruta = backup.crear_respaldo(etiqueta="manual")
         backup.limpiar_respaldos_antiguos()
     except Exception as error:  # noqa: BLE001 - se informa al usuario, no se cae
         return ir_a("/respaldos", f"No se pudo crear el respaldo: {error}")
+    auditoria.registrar(db, usuario, "crear_respaldo", "respaldo", resumen=ruta.name)
+    db.commit()
     return ir_a("/respaldos", f"Respaldo creado: {ruta.name}")
 
 
@@ -1138,6 +1461,16 @@ def restaurar_respaldo(
         backup.limpiar_respaldos_antiguos()
     except Exception as error:  # noqa: BLE001 - se informa al usuario, no se cae
         return ir_a("/respaldos", f"No se pudo restaurar: {error}")
+    # La base que habia quedo reemplazada, asi que la fila va en una sesion
+    # nueva y despues del restaurar: si fuera antes, se perderia.
+    db_nuevo = SessionLocal()
+    try:
+        auditoria.registrar(
+            db_nuevo, usuario, "restaurar_respaldo", "respaldo", resumen=nombre
+        )
+        db_nuevo.commit()
+    finally:
+        db_nuevo.close()
     return ir_a(
         "/respaldos",
         f"Base restaurada desde {nombre}. Deje una copia previa: {seguridad.name}",

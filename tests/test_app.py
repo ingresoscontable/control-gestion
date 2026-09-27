@@ -13,7 +13,9 @@ from urllib.parse import unquote
 os.environ["CG_DATA_DIR"] = tempfile.mkdtemp(prefix="cg-test-")
 os.environ["CG_SECRET_KEY"] = "clave-de-prueba"
 os.environ["CG_ADMIN_USUARIO"] = "jefe"
-os.environ["CG_ADMIN_PIN"] = "1234"
+# El PIN de fabrica es distinto del que usan las pruebas: asi el jefe no queda
+# obligado a cambiarlo en cada prueba y se puede probar el bloqueo aparte.
+os.environ["CG_ADMIN_PIN"] = "9999"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -23,13 +25,33 @@ from app import backup, config, migraciones, seed  # noqa: E402
 from app.database import SessionLocal  # noqa: E402
 from app.main import app  # noqa: E402
 from app.metricas import calendario_mes  # noqa: E402
-from app.models import Meta, Registro, Usuario  # noqa: E402
-from app.security import hash_pin  # noqa: E402
+from app.models import Auditoria, Meta, Registro, Usuario  # noqa: E402
+from app.security import hash_pin, olvidar_pin_de_fabrica  # noqa: E402
+
+_jefe_preparado = False
 
 
 @pytest.fixture()
 def client():
+    """Arranca la app y deja al jefe con el PIN que usan todas las pruebas.
+
+    La semilla le pone el PIN de fabrica (CG_ADMIN_PIN); aca se lo cambiamos a
+    1234 una sola vez para que el resto de las pruebas no dependa del aviso de
+    "cambia tu PIN".
+    """
+    global _jefe_preparado
     with TestClient(app) as c:
+        if not _jefe_preparado:
+            db = SessionLocal()
+            try:
+                jefe = db.query(Usuario).filter_by(usuario="jefe").one()
+                jefe.pin_hash = hash_pin("1234")
+                db.commit()
+                id_jefe = jefe.id
+            finally:
+                db.close()
+            olvidar_pin_de_fabrica(id_jefe)
+            _jefe_preparado = True
         yield c
 
 
@@ -798,6 +820,9 @@ def test_restaurar_respaldo(client):
     db = SessionLocal()
     try:
         assert db.query(Meta).filter_by(titulo="Meta que va a volver").count() == 1
+        # La fila de auditoria se escribe despues de restaurar: si fuera antes,
+        # la restauracion la tiraria junto con el resto de la base vieja.
+        assert db.query(Auditoria).filter_by(accion="restaurar_respaldo").count() == 1
     finally:
         db.close()
 
@@ -1012,8 +1037,7 @@ def test_repetir_carga_del_dia_anterior(client):
                 "estado": "completado",
             },
             follow_redirects=False,
-        ).headers["location"]
-        == "/?msg=Registro%20guardado"
+        ).headers["location"].startswith("/?msg=Registro%20guardado")
     )
     db = SessionLocal()
     try:
@@ -1158,7 +1182,7 @@ def test_indices_creados_en_la_base():
 
 
 def test_totales_no_se_cortan_con_el_limite_de_la_lista(client):
-    """La lista trae 500 filas, pero el total tiene que contar todas."""
+    """La lista pagina de 50 en 50, pero el total tiene que contar todas."""
     db = SessionLocal()
     creados = []
     try:
@@ -1183,11 +1207,21 @@ def test_totales_no_se_cortan_con_el_limite_de_la_lista(client):
 
     try:
         assert login(client, "jefe", "1234").status_code == 303
+        total = antes + 505
         pagina = client.get("/registros")
         assert pagina.status_code == 200
-        assert f"{antes + 505} registro(s)" in pagina.text
+        assert f"{total} registro(s)" in pagina.text
         assert f"{horas_antes + 505.0:.1f} horas acumuladas" in pagina.text
-        assert "La vista trae los últimos 500" in pagina.text
+        assert f"repartidos en {-(-total // 50)} página(s) de 50" in pagina.text
+        # Una sola pantalla: encabezado + 50 filas.
+        assert pagina.text.count("<tr>") == 51
+
+        segunda = client.get("/registros", params={"page": "2"})
+        assert segunda.status_code == 200
+        assert "Página 2 de" in segunda.text
+        # Pedir una pagina fuera de rango no rompe nada: se acomoda.
+        lejana = client.get("/registros", params={"page": "99999"})
+        assert lejana.status_code == 200
     finally:
         db = SessionLocal()
         try:
@@ -1536,3 +1570,461 @@ def test_el_indice_unico_no_rompe_si_hay_duplicados_viejos():
             )
         }
         assert "ix_registros_unico" in nombres
+
+
+# --------------------------------------------------------------------------
+# Seguridad de acceso y trazabilidad (Fase 3)
+# --------------------------------------------------------------------------
+def test_login_bloqueado_tras_cinco_fallos(client, monkeypatch):
+    from app import main as app_main
+    from app.security import LimitadorDeIntentos
+
+    # El limite por defecto es de 5 fallos.
+    assert app_main.intentos_login.intentos == 5
+
+    limpiador = LimitadorDeIntentos(intentos=3, bloqueo=60.0, ventana=60.0)
+    monkeypatch.setattr(app_main, "intentos_login", limpiador)
+
+    assert login(client, "jefe", "0000").status_code == 401
+    assert login(client, "jefe", "0000").status_code == 401
+
+    # El intento que llega al limite cierra la puerta.
+    bloqueado = login(client, "jefe", "0000")
+    assert bloqueado.status_code == 429
+    assert "Demasiados intentos" in bloqueado.text
+
+    # Y no se saltea con el PIN correcto.
+    assert login(client, "jefe", "1234").status_code == 429
+
+    # Otra persona o usuario sigue pudiendo intentar.
+    assert login(client, "nadie", "1234").status_code == 401
+
+    limpiador.limpiar("testclient|jefe")
+    assert login(client, "jefe", "1234").status_code == 303
+
+
+def test_backoff_del_limitador_de_intentos():
+    from app.security import LimitadorDeIntentos
+
+    limpiador = LimitadorDeIntentos(intentos=2, bloqueo=10.0, bloqueo_maximo=40.0)
+
+    assert limpiador.restante("ip|jefe") == 0.0
+    assert limpiador.registrar_fallo("ip|jefe") == 0.0
+    assert limpiador.registrar_fallo("ip|jefe") == 10.0
+    assert limpiador.restante("ip|jefe") > 0
+
+    # Si vuelve a fallar cuando se libero, el proximo bloqueo se dobla.
+    assert limpiador.registrar_fallo("ip|jefe") == 0.0
+    assert limpiador.registrar_fallo("ip|jefe") == 20.0
+    assert limpiador.registrar_fallo("ip|jefe") == 0.0
+    assert limpiador.registrar_fallo("ip|jefe") == 40.0
+
+    limpiador.limpiar("ip|jefe")
+    assert limpiador.restante("ip|jefe") == 0.0
+    assert limpiador.registrar_fallo("ip|jefe") == 0.0
+
+
+def test_pin_de_fabrica_obliga_a_cambiarlo(client):
+    assert login(client, "jefe", "1234").status_code == 303
+    creado = client.post(
+        "/equipo",
+        data={
+            "nombre": "Nuevo Ingreso",
+            "usuario": "nuevoingreso",
+            "pin": config.ADMIN_PIN,
+            "rol": "empleado",
+        },
+        follow_redirects=False,
+    )
+    assert creado.status_code == 303
+    assert client.post("/logout", follow_redirects=False).status_code == 303
+
+    assert login(client, "nuevoingreso", config.ADMIN_PIN).status_code == 303
+
+    # Entra y lo primero que ve es el aviso de cambiar el PIN.
+    panel = client.get("/", follow_redirects=False)
+    assert panel.status_code == 303
+    assert panel.headers["location"].startswith("/ayuda")
+
+    # Tampoco pasa a las otras paginas.
+    guia = client.get("/guia", follow_redirects=False)
+    assert guia.status_code == 303
+    assert guia.headers["location"].startswith("/ayuda")
+
+    # Pero el aviso y el formulario si estan disponibles.
+    assert client.get("/ayuda", follow_redirects=False).status_code == 200
+    cambio = client.post(
+        "/mi-pin",
+        data={"pin_actual": config.ADMIN_PIN, "pin_nuevo": "5678"},
+        follow_redirects=False,
+    )
+    assert cambio.status_code == 303
+    assert "PIN%20actualizado" in cambio.headers["location"]
+
+    # Ya cambiado, el panel se abre normal.
+    assert client.get("/", follow_redirects=False).status_code == 200
+
+
+def test_acciones_criticas_dejan_rastro_en_la_auditoria(client):
+    assert login(client, "jefe", "1234").status_code == 303
+
+    client.post("/metas", data={"titulo": "Meta auditada"}, follow_redirects=False)
+    meta_id = _id_meta("Meta auditada")
+
+    client.post(
+        "/registros",
+        data={"meta_id": str(meta_id), "descripcion": "trabajo para borrar"},
+        follow_redirects=False,
+    )
+    registro_id = _ultimo_registro_de("jefe")
+    client.post(
+        f"/registros/{registro_id}/comentario",
+        data={"comentario": "revisado", "volver": "/"},
+        follow_redirects=False,
+    )
+    client.post(
+        f"/registros/{registro_id}/eliminar",
+        data={"volver": "/"},
+        follow_redirects=False,
+    )
+
+    client.post(
+        f"/metas/{meta_id}",
+        data={"titulo": "Meta auditada v2", "estado": "cerrada"},
+        follow_redirects=False,
+    )
+    client.post(f"/metas/{meta_id}/duplicar", follow_redirects=False)
+    client.post(f"/metas/{meta_id}/eliminar", follow_redirects=False)
+
+    client.post(
+        "/equipo",
+        data={"nombre": "Persona Nueva", "usuario": "pnueva", "pin": "4321"},
+        follow_redirects=False,
+    )
+    nuevo_id = _usuario_id("pnueva")
+    client.post(f"/equipo/{nuevo_id}/activo", follow_redirects=False)
+    client.post(f"/equipo/{nuevo_id}/pin", data={"pin": "8765"}, follow_redirects=False)
+
+    client.post("/respaldos/ahora", follow_redirects=False)
+
+    db = SessionLocal()
+    try:
+        acciones = {fila.accion for fila in db.query(Auditoria).all()}
+        archivo = (
+            db.query(Auditoria)
+            .filter_by(accion="archivar_meta", objeto_id=meta_id)
+            .one()
+        )
+        jefe_id = db.query(Usuario).filter_by(usuario="jefe").one().id
+    finally:
+        db.close()
+
+    assert {
+        "crear_meta",
+        "editar_meta",
+        "duplicar_meta",
+        "archivar_meta",
+        "comentar_registro",
+        "eliminar_registro",
+        "crear_usuario",
+        "cambiar_estado_usuario",
+        "cambiar_pin",
+        "crear_respaldo",
+    } <= acciones
+    # Cada fila dice quien la hizo y sobre que.
+    assert archivo.usuario_id == jefe_id
+    assert archivo.objeto_tipo == "meta"
+    assert archivo.resumen == "Meta auditada v2"
+
+
+def test_respaldo_automatico_tambien_deja_rastro():
+    from app.main import _auditar_respaldo_automatico
+
+    _auditar_respaldo_automatico("respaldo-solo-de-prueba.db")
+
+    db = SessionLocal()
+    try:
+        filas = (
+            db.query(Auditoria)
+            .filter_by(accion="crear_respaldo", resumen="respaldo-solo-de-prueba.db")
+            .all()
+        )
+    finally:
+        db.close()
+
+    assert len(filas) == 1
+    assert filas[0].usuario_id is None  # lo hizo el sistema, no una persona
+
+
+# --------------------------------------------------------------------------
+# Listados, exportes y avisos (Fase 4)
+# --------------------------------------------------------------------------
+def test_paginacion_conserva_los_filtros(client):
+    assert login(client, "jefe", "1234").status_code == 303
+    client.post("/metas", data={"titulo": "Meta paginada"})
+    meta_id = _id_meta("Meta paginada")
+
+    db = SessionLocal()
+    try:
+        jefe = db.query(Usuario).filter_by(usuario="jefe").one()
+        for i in range(55):
+            db.add(
+                Registro(
+                    usuario_id=jefe.id,
+                    meta_id=meta_id,
+                    fecha=date.today() - timedelta(days=i),
+                    descripcion=f"fila paginada {i}",
+                    horas=1.0,
+                    estado="completado",
+                )
+            )
+        db.commit()
+    finally:
+        db.close()
+
+    try:
+        una = client.get("/registros", params={"meta_id": str(meta_id)})
+        assert una.status_code == 200
+        assert "55 registro(s)" in una.text
+        # Encabezado + 50 filas: no se tiran las 55 de una.
+        assert una.text.count("<tr>") == 51
+        # El enlace a la pagina 2 no se olvida del filtro.
+        assert f'href="/registros?meta_id={meta_id}&amp;page=2"' in una.text
+        # Y el Excel baja los 55, no la pagina.
+        assert (
+            una.text.count(f"/registros/exportar.xlsx?meta_id={meta_id}") == 1
+        )
+
+        dos = client.get("/registros", params={"meta_id": str(meta_id), "page": "2"})
+        assert dos.status_code == 200
+        assert "Página 2 de 2" in dos.text
+        assert "55 registro(s)" in dos.text  # los totales no cambian de pagina
+        assert dos.text.count("<tr>") == 6  # encabezado + 5 filas
+    finally:
+        db = SessionLocal()
+        try:
+            db.query(Registro).filter_by(meta_id=meta_id).delete(
+                synchronize_session=False
+            )
+            meta = db.get(Meta, meta_id)
+            if meta is not None:
+                db.delete(meta)
+            db.commit()
+        finally:
+            db.close()
+
+
+def test_filtro_por_texto_y_estado(client):
+    assert login(client, "jefe", "1234").status_code == 303
+    client.post("/metas", data={"titulo": "Meta de texto"})
+    meta_id = _id_meta("Meta de texto")
+    client.post(
+        "/registros",
+        data={
+            "meta_id": str(meta_id),
+            "descripcion": "arquitectura de puentes colgantes",
+            "horas": "4",
+            "estado": "bloqueado",
+        },
+        follow_redirects=False,
+    )
+
+    con_texto = client.get("/registros", params={"texto": "puentes"})
+    assert con_texto.status_code == 200
+    assert "arquitectura de puentes colgantes" in con_texto.text
+    # El filtro sigue vivo en el enlace del Excel.
+    assert "exportar.xlsx?texto=puentes" in con_texto.text
+
+    sin_nada = client.get("/registros", params={"texto": "zzzznoexiste"})
+    assert sin_nada.status_code == 200
+    assert "No hay registros con esos filtros." in sin_nada.text
+
+    por_estado = client.get("/registros", params={"estado": "bloqueado"})
+    assert por_estado.status_code == 200
+    assert "arquitectura de puentes colgantes" in por_estado.text
+
+    combinado = client.get(
+        "/registros", params={"texto": "puentes", "estado": "bloqueado"}
+    )
+    assert "arquitectura de puentes colgantes" in combinado.text
+    assert "exportar.xlsx?texto=puentes&amp;estado=bloqueado" in combinado.text
+
+    # Un estado inventado no se aplica (no filtra por cualquier cosa).
+    inventado = client.get("/registros", params={"estado": "cualquiera"})
+    assert inventado.status_code == 200
+    assert "arquitectura de puentes colgantes" in inventado.text
+
+
+def test_excel_y_pdf_desde_la_ficha_de_persona(client):
+    assert login(client, "jefe", "1234").status_code == 303
+    maria = _id_usuario("mperez")
+
+    ficha = client.get(f"/personas/{maria}")
+    assert ficha.status_code == 200
+    assert f'href="/registros/exportar.xlsx?usuario_id={maria}"' in ficha.text
+    assert f'action="/personas/{maria}/reporte.pdf"' in ficha.text
+
+    excel = client.get("/registros/exportar.xlsx", params={"usuario_id": str(maria)})
+    assert excel.status_code == 200
+    assert excel.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument"
+    )
+
+    pdf = client.get(f"/personas/{maria}/reporte.pdf")
+    assert pdf.status_code == 200
+    assert pdf.headers["content-type"] == "application/pdf"
+    assert pdf.content[:5] == b"%PDF-"
+    assert 'filename="reporte_mperez_' in pdf.headers["content-disposition"]
+
+    # Periodo invalido no tira error 500.
+    raro = client.get(
+        f"/personas/{maria}/reporte.pdf",
+        params={"mes": "13"},
+        follow_redirects=False,
+    )
+    assert raro.status_code == 303
+    assert raro.headers["location"].startswith(f"/personas/{maria}?msg=")
+
+
+def test_aviso_de_carga_excesiva(client):
+    assert login(client, "jefe", "1234").status_code == 303
+    client.post(
+        "/equipo",
+        data={"nombre": "Larga Carga", "usuario": "largacarga", "pin": "4321"},
+        follow_redirects=False,
+    )
+    assert client.post("/logout", follow_redirects=False).status_code == 303
+    assert login(client, "largacarga", "4321").status_code == 303
+
+    cargado = client.post(
+        "/registros",
+        data={"descripcion": "dia de nueve horas", "horas": "9"},
+        follow_redirects=False,
+    )
+    ubicacion = cargado.headers["location"]
+    assert ubicacion.startswith("/?msg=Registro%20guardado")
+    assert "superar%208%20h%20en%20un%20dia" in ubicacion
+
+    # El aviso no frena nada: el registro quedo guardado igual.
+    db = SessionLocal()
+    try:
+        persona = db.query(Usuario).filter_by(usuario="largacarga").one()
+        guardados = (
+            db.query(Registro)
+            .filter_by(usuario_id=persona.id, fecha=date.today())
+            .count()
+        )
+    finally:
+        db.close()
+    assert guardados == 1
+
+    # Una carga normal no avisa.
+    normal = client.post(
+        "/registros",
+        data={
+            "descripcion": "media jornada",
+            "horas": "2",
+            "fecha": (date.today() - timedelta(days=1)).isoformat(),
+        },
+        follow_redirects=False,
+    )
+    assert normal.headers["location"] == "/?msg=Registro%20guardado"
+
+
+def test_aviso_de_carga_excesiva_por_semana():
+    """El aviso de semana salta al pasar de 40 h, aunque ningun dia pase de 8."""
+    from app.main import aviso_de_carga
+
+    db = SessionLocal()
+    persona_id = None
+    try:
+        persona = Usuario(
+            nombre="Semana Larga",
+            usuario="semanalarga",
+            pin_hash=hash_pin("4321"),
+            rol="empleado",
+        )
+        db.add(persona)
+        db.flush()
+        persona_id = persona.id
+
+        # Lunes a sabado de la semana pasada: todos los dias en el pasado.
+        lunes = date.today() - timedelta(days=date.today().weekday()) - timedelta(days=7)
+        for i in range(6):
+            db.add(
+                Registro(
+                    usuario_id=persona_id,
+                    fecha=lunes + timedelta(days=i),
+                    descripcion="siete horas",
+                    horas=7.0,
+                    estado="completado",
+                )
+            )
+        db.commit()
+
+        sabado = lunes + timedelta(days=5)
+
+        # Una semana anterior no tiene nada cargado: no avisa.
+        assert aviso_de_carga(db, persona_id, lunes - timedelta(days=3)) == ""
+
+        # El sabado la semana llega a 42 h aunque ese dia solo cargó 7.
+        aviso_semana = aviso_de_carga(db, persona_id, sabado)
+        assert "42.0 h en la semana" in aviso_semana
+        assert "en un dia" not in aviso_semana
+
+        # Si ademas ese dia se pasa de 8, avisa las dos cosas.
+        db.add(
+            Registro(
+                usuario_id=persona_id,
+                fecha=lunes,
+                descripcion="dos horas mas",
+                horas=2.0,
+                estado="completado",
+            )
+        )
+        db.commit()
+        aviso = aviso_de_carga(db, persona_id, lunes)
+        assert "9.0 h el" in aviso
+        assert "44.0 h en la semana" in aviso
+    finally:
+        if persona_id is not None:
+            db.query(Registro).filter_by(usuario_id=persona_id).delete(
+                synchronize_session=False
+            )
+            db.query(Usuario).filter_by(id=persona_id).delete(
+                synchronize_session=False
+            )
+            db.commit()
+        db.close()
+
+
+def test_pagina_de_auditoria(client):
+    assert login(client, "jefe", "1234").status_code == 303
+    client.post("/metas", data={"titulo": "Meta para auditar"})
+    meta_id = _id_meta("Meta para auditar")
+    client.post(f"/metas/{meta_id}/eliminar", follow_redirects=False)
+
+    pagina = client.get("/auditoria")
+    assert pagina.status_code == 200
+    assert "Archivó una meta" in pagina.text
+    assert "Meta para auditar" in pagina.text
+
+    filtrada = client.get("/auditoria", params={"accion": "archivar_meta"})
+    assert filtrada.status_code == 200
+    assert "Meta para auditar" in filtrada.text
+
+    por_persona = client.get(
+        "/auditoria", params={"usuario_id": str(_id_usuario("jefe"))}
+    )
+    assert por_persona.status_code == 200
+    assert "Meta para auditar" in por_persona.text
+
+    # Un filtro inventado no filtra nada raro.
+    rara = client.get("/auditoria", params={"accion": "no_existe"})
+    assert rara.status_code == 200
+    assert "acción(es)" in rara.text
+
+    # El equipo no ve esta pantalla.
+    assert client.post("/logout", follow_redirects=False).status_code == 303
+    assert login(client, "mperez", "4821").status_code == 303
+    assert client.get("/auditoria", follow_redirects=False).status_code == 303

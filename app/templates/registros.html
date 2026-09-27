@@ -33,11 +33,23 @@
       Hasta
       <input type="date" name="hasta" value="{{ filtros.hasta.isoformat() if filtros.hasta else '' }}">
     </label>
+    <label>
+      Estado
+      <select name="estado">
+        <option value="">Todos</option>
+        {% for clave, etiqueta in estados %}
+        <option value="{{ clave }}" {% if filtros.estado == clave %}selected{% endif %}>{{ etiqueta }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="ancho">
+      Qué hizo (busca en el texto)
+      <input type="search" name="texto" value="{{ filtros.texto or '' }}" placeholder="palabra o fragmento">
+    </label>
     <div class="filtros-botones">
       <button type="submit" class="btn primary">Filtrar</button>
       <a class="btn ghost" href="/registros">Limpiar</a>
-      <a class="btn ghost"
-         href="/registros/exportar.xlsx{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+      <a class="btn ghost" href="/registros/exportar.xlsx{% if qs %}?{{ qs }}{% endif %}">
         Exportar a Excel
       </a>
     </div>
@@ -71,12 +83,24 @@
 
 <section class="card">
   <h2>{{ total }} registro(s) · {{ '%.1f'|format(total_horas) }} horas acumuladas</h2>
-  {% if mostrados < total %}
   <p class="muted small">
-    La vista trae los últimos {{ mostrados }}. Para ver el resto, acotá los filtros
-    o bajá el Excel, que descarga todo lo filtrado.
+    Se muestran {{ mostrados }} en esta página, de {{ total }} que cumplen los
+    filtros, repartidos en {{ paginas }} página(s) de {{ por_pagina }}.
+    El Excel baja todos los filtrados.
   </p>
+
+  {% if paginas > 1 %}
+  <nav class="paginacion">
+    {% if pagina > 1 %}
+    <a class="btn ghost" href="/registros?{% if qs %}{{ qs }}&amp;{% endif %}page={{ pagina - 1 }}">← Anterior</a>
+    {% endif %}
+    <span class="muted small">Página {{ pagina }} de {{ paginas }}</span>
+    {% if pagina < paginas %}
+    <a class="btn ghost" href="/registros?{% if qs %}{{ qs }}&amp;{% endif %}page={{ pagina + 1 }}">Siguiente →</a>
+    {% endif %}
+  </nav>
   {% endif %}
+
   {% if registros %}
   <table class="tabla">
     <thead>
@@ -99,7 +123,7 @@
             {% endif %}
           {% endif %}
           <form method="post" action="/registros/{{ r.id }}/comentario" class="inline">
-            <input type="hidden" name="volver" value="/registros">
+            <input type="hidden" name="volver" value="/registros?{% if qs %}{{ qs }}&amp;{% endif %}page={{ pagina }}">
             <input type="text" name="comentario" value="{{ r.comentario or '' }}" placeholder="Observación...">
             <button type="submit" class="link">Guardar</button>
           </form>
@@ -107,7 +131,7 @@
         <td>
           <form method="post" action="/registros/{{ r.id }}/eliminar"
                 onsubmit="return confirm('¿Eliminar este registro?')">
-            <input type="hidden" name="volver" value="/registros">
+            <input type="hidden" name="volver" value="/registros?{% if qs %}{{ qs }}&amp;{% endif %}page={{ pagina }}">
             <button type="submit" class="link danger">Eliminar</button>
           </form>
         </td>

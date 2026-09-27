@@ -59,6 +59,8 @@ administrador. Para desactivarlo, **`desinstalar-arranque.bat`**
 | `jefe`  | `1234` |
 
 Entra y **cambia el PIN de inmediato** en la sección *Ayuda → Cambiar mi PIN*.
+**Ya no es opcional**: mientras el PIN siga siendo el de fábrica, el sistema no
+te deja pasar de la pantalla de Ayuda.
 
 Mientras no lo cambies, las credenciales quedan escritas en
 `data/primer-ingreso.txt` por si las necesitás volver a leer. **Ese archivo se
@@ -103,19 +105,27 @@ borra solo** en cuanto el jefe cambia su PIN.
   límite**, con los días de atraso (al equipo le muestra solo las suyas).
   Cierra el panel con un **gráfico de horas de las últimas 8 semanas**, una barra
   por persona y por semana.
-- *Registros* → historial completo, con filtros por **meta**, persona y rango de
-  fechas, botón **Exportar a Excel** que baja a `.xlsx` exactamente lo que está
-  filtrado, y **reporte mensual en PDF** con resumen general, resumen por
-  persona, metas del periodo y detalle de los reportes diarios.
+- *Registros* → historial completo **paginado de 50 en 50**, con filtros por
+  **meta**, persona, rango de fechas, **estado** del reporte y **texto libre
+  dentro de la descripción**. Los filtros se recuerdan al pasar de página y al
+  exportar. El botón **Exportar a Excel** baja a `.xlsx` exactamente lo que está
+  filtrado (todos, no la página), y hay **reporte mensual en PDF** con resumen
+  general, resumen por persona, metas del periodo y detalle de los reportes
+  diarios.
 - *Calendario* → el mes en curso dibujado día por día: quién cargó, con cuántas
   horas y quién no reportó. Flechas para pasar al mes anterior o siguiente.
 - *Comentarios* → en el panel y en registros puedes dejarle una observación a
   cada reporte diario (el empleado la ve, pero no puede editarla).
 - *Respaldos* → copia de seguridad automática (cada 24 h y al arrancar) y botón
   para hacer una a mano. Los respaldos viejos se borran solos.
+- *Auditoría* → quién hizo qué y cuándo: meta creada, archivada o editada,
+  reporte eliminado o comentado, usuario creado o bloqueado, PIN cambiado,
+  respaldo creado o restaurado. Filtrable por persona, acción y fecha.
 - *Personas* → haz clic en cualquier nombre (en *Equipo*, en *Registros* o en el
   panel) y ves su **historial completo**: todos sus reportes, sus metas con el
-  avance y los comentarios que le dejaste, con filtro por fechas.
+  avance y los comentarios que le dejaste, con filtro por fechas. Desde ahí
+  también salen el **Excel** de esa persona y su **PDF mensual**, listo para
+  enviárselo.
 
 **Empleado**
 
@@ -127,6 +137,9 @@ borra solo** en cuanto el jefe cambia su PIN.
   En *Mis últimos registros* cada fila tiene un enlace **Repetir**: precarga el
   formulario con esa carga (meta, descripción, horas y estado) pero con la fecha
   de hoy, para no volver a escribir lo mismo todos los días.
+  Si al guardar te aparece un **aviso de carga excesiva** (más de 8 h en un día
+  o 40 en la semana) es solo un cartel para revisarlo: **el reporte se guarda
+  igual**.
 
 ---
 
@@ -181,6 +194,29 @@ en cuando. Para más detalle, la variable `CG_LOG_LEVEL=DEBUG`.
 
 ---
 
+## Auditoría (quién hizo qué)
+
+Además del log, el sistema guarda en la base una **tabla `auditoria`** con cada
+acción que cambia información:
+
+| Qué queda registrado | Ejemplo de fila |
+|----------------------|-----------------|
+| Crear / editar / archivar una meta | `crear_meta`, `editar_meta`, `archivar_meta` |
+| Duplicar una meta | `duplicar_meta` |
+| Eliminar un reporte | `eliminar_registro` |
+| Dejar (o borrar) un comentario en un reporte | `comentar_registro` |
+| Crear usuario, activar/desactivar, cambiarle el PIN | `crear_usuario`, `cambiar_estado_usuario`, `cambiar_pin` |
+| Cambiar mi propio PIN | `cambiar_pin` |
+| Crear y **restaurar** un respaldo (manual o automático) | `crear_respaldo`, `restaurar_respaldo` |
+
+Cada fila guarda **quién** lo hizo (o vacío si fue el sistema), **qué** acción,
+**sobre qué** objeto y una frase resumen, con fecha. Se escribe en la misma
+transacción que la acción: si algo falló, no queda registrada como hecho; y si
+se restaura un respaldo viejo, la fila se escribe **después** del restore, así
+que no se pierde. El detalle página a página se agrega en la Fase 4.
+
+---
+
 ## Configuración opcional
 
 Se puede ajustar sin tocar el código, creando variables de entorno en Windows
@@ -200,6 +236,8 @@ Variables de entorno*) o editando `iniciar.bat`:
 | `CG_BACKUP_CONSERVAR` | `30`                       | Cuántos respaldos se conservan       |
 | `CG_LOG_LEVEL`      | `INFO`                      | Nivel del log del sistema (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `CG_DIAS_ATRASO`    | `30`                        | Cuántos días hacia atrás se puede cargar un reporte (`0` = solo hoy) |
+| `CG_HORAS_DIA`      | `8`                         | Horas en un día a partir de las cuales aparece el aviso de carga excesiva |
+| `CG_HORAS_SEMANA`   | `40`                        | Horas en la semana a partir de las cuales aparece el aviso (aviso, no bloquea) |
 
 Ejemplo para guardar los respaldos en un pendrive, dentro de `iniciar.bat`:
 
@@ -231,10 +269,11 @@ control-gestion/
 ├── abrir-firewall.bat      # abre el puerto en la red local (admin)
 ├── app/
 │   ├── main.py             # rutas y lógica
-│   ├── models.py           # usuarios, metas, registros
+│   ├── models.py           # usuarios, metas, registros y auditoría
 │   ├── database.py         # SQLite
-│   ├── security.py         # hash de PIN y detección de IP
-│   ├── reportes.py         # reporte mensual en PDF
+│   ├── security.py         # hash de PIN, detección de IP y bloqueo de login
+│   ├── auditoria.py        # deja registro de quién hizo cada cambio
+│   ├── reportes.py         # reportes mensuales en PDF (general y por persona)
 │   ├── progreso.py         # cálculo del avance de las metas
 │   ├── metricas.py         # resumen semanal, gráfico de horas y calendario
 │   ├── backup.py           # respaldos automáticos y manuales
@@ -287,5 +326,15 @@ Las mismas dos comandas corren solas en GitHub Actions con cada push
 ## Notas de seguridad
 
 Esta herramienta está pensada para una **red interna de confianza**. El login es
-usuario + PIN (guardado con PBKDF2, nunca en texto plano), pero no incluye HTTPS
-ni bloqueo por intentos fallidos. No la expongas directamente a internet.
+usuario + PIN (guardado con PBKDF2, nunca en texto plano), pero no incluye
+HTTPS. No la expongas directamente a internet.
+
+Lo que sí está cubierto:
+
+- **Intentos de PIN:** 5 fallos por IP + usuario en 5 minutos bloquean el login
+  con un aviso, y el bloqueo crece (5, 10, 20… hasta 30 minutos) si sigue
+  insistiendo. Cualquier otra persona sigue pudiendo entrar mientras tanto.
+- **PIN de fábrica:** nadie queda logueado con el PIN inicial: hasta que lo
+  cambie, solo puede ver *Ayuda* y *Cambiar mi PIN*.
+- **Trazabilidad:** toda acción que borra o modifica información queda en la
+  tabla `auditoria` (ver [Auditoría](#auditoría-quién-hizo-qué)).

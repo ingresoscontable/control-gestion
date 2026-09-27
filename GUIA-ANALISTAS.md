@@ -12,6 +12,14 @@ dentro del sistema, en el enlace **Guía** del menú superior.
 3. Guárdala en **favoritos**: es siempre la misma.
 4. Entra con tu **usuario** y tu **PIN**.
 
+> **Si te cambió el PIN a un valor temporal** (por ejemplo `1234`), el sistema
+> no te deja pasar de la pantalla *Ayuda*: entrá a **Ayuda → Cambiar mi PIN**
+> y listo. Con eso volvés a entrar normal.
+
+> **Te equivocaste 5 veces seguidas?** El login se traba unos minutos para
+> proteger los datos. Esperá, y si no te acordás del PIN pedile al jefe que te
+> lo resetee desde *Equipo*.
+
 > La primera vez el navegador puede avisarte que la conexión no es segura. Es
 > normal: el sistema es interno de la oficina, no está en internet. Continúa.
 
@@ -60,13 +68,16 @@ La barra de progreso de cada meta se llena así:
 
 ---
 
-## 5. Las dos cosas que te van a aparecer
+## 5. Las tres cosas que te van a aparecer
 
 - **Comentario del jefe** — un recuadro amarillo debajo de alguno de tus
   reportes, con una observación. Es solo para leer, no se edita.
 - **Aviso de plazo vencido** — un cartel rojo arriba del panel cuando alguna de
   tus metas pasó la fecha límite. No es una sanción, es para que lo tengas
   presente.
+- **Aviso de carga excesiva** — si al guardar te dice que cargaste más de 8
+  horas en un día o más de 40 en la semana, es un cartel para revisar si fue
+  un error de tipeo. **El reporte se guarda igual**, no te bloquea nada.
 
 ---
 

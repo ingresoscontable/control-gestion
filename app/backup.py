@@ -11,6 +11,7 @@ import logging
 import shutil
 import sqlite3
 import time
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -198,12 +199,18 @@ def listar_respaldos() -> list[dict]:
     return items
 
 
-async def respaldo_periodico() -> None:
-    """Crea un respaldo al arrancar y luego cada BACKUP_HORAS horas."""
+async def respaldo_periodico(al_crear: Callable[[str], None] | None = None) -> None:
+    """Crea un respaldo al arrancar y luego cada BACKUP_HORAS horas.
+
+    Si se pasa ``al_crear``, se le avisa el nombre de cada archivo generado
+    (para que el que lo pida lo deje firmado en la auditoria).
+    """
     while True:
         try:
-            crear_respaldo()
+            ruta = crear_respaldo()
             limpiar_respaldos_antiguos()
+            if al_crear is not None:
+                al_crear(ruta.name)
         except Exception:  # noqa: BLE001 - un fallo de respaldo no debe tumbar la app
             logger.exception("No se pudo crear el respaldo automatico")
         await asyncio.sleep(max(1, config.BACKUP_HORAS) * 3600)

@@ -202,6 +202,12 @@
 
 <section class="card">
   <h2>{% if usuario.es_jefe %}Últimos registros del equipo{% else %}Mis últimos registros{% endif %}</h2>
+  {% if usuario.es_jefe %}
+  <p>
+    <a class="btn ghost" href="/registros/exportar.xlsx">Exportar todo a Excel</a>
+    <span class="muted small">Lo mismo que hace la pantalla de Registros, sin filtros.</span>
+  </p>
+  {% endif %}
   {% set lista = registros_hoy if usuario.es_jefe else mis_registros %}
   {% if lista %}
   <table class="tabla">

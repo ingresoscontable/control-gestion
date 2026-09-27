@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block titulo %}Auditoría · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Auditoría</h1>
+<p class="sub">Quién hizo qué y cuándo. Solo se registran las acciones que cambian o borran información.</p>
+
+<section class="card">
+  <form method="get" action="/auditoria" class="filtros">
+    <label>
+      Persona
+      <select name="usuario_id">
+        <option value="">Todas</option>
+        {% for u in equipo %}
+        <option value="{{ u.id }}" {% if filtros.usuario_id == u.id %}selected{% endif %}>{{ u.nombre }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Acción
+      <select name="accion">
+        <option value="">Todas</option>
+        {% for clave, etiqueta in acciones %}
+        <option value="{{ clave }}" {% if filtros.accion == clave %}selected{% endif %}>{{ etiqueta }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Desde
+      <input type="date" name="desde" value="{{ filtros.desde.isoformat() if filtros.desde else '' }}">
+    </label>
+    <label>
+      Hasta
+      <input type="date" name="hasta" value="{{ filtros.hasta.isoformat() if filtros.hasta else '' }}">
+    </label>
+    <div class="filtros-botones">
+      <button type="submit" class="btn primary">Filtrar</button>
+      <a class="btn ghost" href="/auditoria">Limpiar</a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>{{ total }} acción(es)</h2>
+
+  {% if paginas > 1 %}
+  <nav class="paginacion">
+    {% if pagina > 1 %}
+    <a class="btn ghost" href="/auditoria?{% if qs %}{{ qs }}&amp;{% endif %}page={{ pagina - 1 }}">← Anterior</a>
+    {% endif %}
+    <span class="muted small">Página {{ pagina }} de {{ paginas }}</span>
+    {% if pagina < paginas %}
+    <a class="btn ghost" href="/auditoria?{% if qs %}{{ qs }}&amp;{% endif %}page={{ pagina + 1 }}">Siguiente →</a>
+    {% endif %}
+  </nav>
+  {% endif %}
+
+  {% if filas %}
+  <table class="tabla">
+    <thead>
+      <tr><th>Fecha</th><th>Quién</th><th>Acción</th><th>Sobre qué</th><th>Detalle</th></tr>
+    </thead>
+    <tbody>
+      {% for f in filas %}
+      <tr>
+        <td>{{ f.fecha.strftime('%d/%m/%Y %H:%M') }}</td>
+        <td>
+          {% if f.usuario %}
+            {% if f.usuario.activo %}
+            <a href="/personas/{{ f.usuario.id }}">{{ f.usuario.nombre }}</a>
+            {% else %}
+            {{ f.usuario.nombre }} (inactivo)
+            {% endif %}
+          {% else %}
+            <span class="muted">el sistema</span>
+          {% endif %}
+        </td>
+        <td>{{ etiquetas.get(f.accion, f.accion) }}</td>
+        <td>{{ f.objeto_tipo }}{% if f.objeto_id %} #{{ f.objeto_id }}{% endif %}</td>
+        <td class="desc">{{ f.resumen or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">Se muestran {{ mostrados }} de {{ total }}.</p>
+  {% else %}
+  <p class="muted">No hay acciones con esos filtros.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

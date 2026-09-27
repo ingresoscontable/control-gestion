@@ -19,13 +19,16 @@ No se tocan, pero quedan anotados por si el sistema crece.
 | 0 — Cimientos | ✅ Hecha (27/09/2026). `ruff check .` limpio, 35 tests en verde, smoke test real con servidor arrancado. |
 | 1 — Base de datos | ✅ Hecha (27/09/2026). WAL activo, 3 índices, eager loading verificado con test de conteo de consultas (43 → 5 en la exportación), totales reales, respaldos validados al crear. 42 tests en verde. |
 | 2 — Integridad | ✅ Hecha (27/09/2026). Índice único `(usuario_id, fecha, meta_id)` con chequeo previo de duplicados (si hay, los lista en el log y lo deja para después), validación de fecha (hoy − 30 días, `CG_DIAS_ATRASO`), meta ajena rechazada y meta con **borrado lógico** (Archivar/Restaurar). 48 tests en verde. |
-| 3 — Seguridad y trazabilidad | ⬜ Pendiente |
-| 4 — UX y reportes | ⬜ Pendiente |
-| 5 — Documentación y entrega | ⬜ Pendiente |
+| 3 — Seguridad y trazabilidad | ✅ Hecha (27/09/2026). Rate limit 5 intentos / 5 min por IP+usuario con backoff (5→10→20…→30 min), PIN de fábrica redirige a `/ayuda` hasta que se cambie (rutas libres `/ayuda` y `/mi-pin`), tabla `auditoria` firmada por usuario en 11 acciones (incluye crear y restaurar respaldo, manual o automático). 53 tests en verde. |
+| 4 — UX y reportes | ✅ Hecha (27/09/2026). Registros paginado de 50 en 50 con filtros recordados (meta, persona, fechas, estado y texto libre) y el Excel bajando todo lo filtrado; PDF mensual por persona desde su ficha; aviso al cargar si se pasa de 8 h/día o 40 h/semana (`CG_HORAS_DIA`, `CG_HORAS_SEMANA`); Excel desde Panel y Persona; página `/auditoria` para el jefe. 59 tests en verde. |
+| 5 — Documentación y entrega | ⬜ Pendiente (README, GUIA y ROADMAP ya llevados al día en las fases 0–4). |
 
 ---
 
-## Estado actual
+## Estado al inicio (27/09/2026)
+
+Punto de partida con el que se armó este roadmap. Lo que ya cambió está en la
+tabla de [Avance](#avance).
 
 | Ítem | Estado |
 |------|--------|

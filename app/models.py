@@ -101,7 +101,44 @@ class Registro(Base):
     meta: Mapped[Meta | None] = relationship(back_populates="registros")
 
 
+class Auditoria(Base):
+    """Quien hizo que y cuando: deja rastro de toda accion destructiva."""
+
+    __tablename__ = "auditoria"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    usuario_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id"), nullable=True
+    )
+    accion: Mapped[str] = mapped_column(String(40))
+    objeto_tipo: Mapped[str] = mapped_column(String(30), default="")
+    objeto_id: Mapped[int | None] = mapped_column(nullable=True)
+    resumen: Mapped[str] = mapped_column(String(255), default="")
+    fecha: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    __table_args__ = (Index("ix_auditoria_fecha", "fecha"),)
+
+    usuario: Mapped[Usuario | None] = relationship(foreign_keys=[usuario_id])
+
+
 # Sin esto cada fila de un listado dispara su propia consulta para leer el
 # usuario o el responsable (1 consulta por fila al renderizar).
 OPCIONES_REGISTRO = (selectinload(Registro.usuario), selectinload(Registro.meta))
 OPCIONES_META = (selectinload(Meta.asignado),)
+OPCIONES_AUDITORIA = (selectinload(Auditoria.usuario),)
+
+# Acciones que quedan firmadas en la auditoria, con la etiqueta que se muestra
+# en la pagina /auditoria. Se guarda la clave corta en la base.
+ACCIONES_AUDITORIA = [
+    ("crear_meta", "Creó una meta"),
+    ("editar_meta", "Editó una meta"),
+    ("duplicar_meta", "Duplicó una meta"),
+    ("archivar_meta", "Archivó una meta"),
+    ("comentar_registro", "Comentó un reporte"),
+    ("eliminar_registro", "Eliminó un reporte"),
+    ("crear_usuario", "Creó un usuario"),
+    ("cambiar_estado_usuario", "Activó/desactivó un usuario"),
+    ("cambiar_pin", "Cambió un PIN"),
+    ("crear_respaldo", "Creó un respaldo"),
+    ("restaurar_respaldo", "Restauró un respaldo"),
+]

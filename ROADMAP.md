@@ -21,7 +21,7 @@ No se tocan, pero quedan anotados por si el sistema crece.
 | 2 — Integridad | ✅ Hecha (27/09/2026). Índice único `(usuario_id, fecha, meta_id)` con chequeo previo de duplicados (si hay, los lista en el log y lo deja para después), validación de fecha (hoy − 30 días, `CG_DIAS_ATRASO`), meta ajena rechazada y meta con **borrado lógico** (Archivar/Restaurar). 48 tests en verde. |
 | 3 — Seguridad y trazabilidad | ✅ Hecha (27/09/2026). Rate limit 5 intentos / 5 min por IP+usuario con backoff (5→10→20…→30 min), PIN de fábrica redirige a `/ayuda` hasta que se cambie (rutas libres `/ayuda` y `/mi-pin`), tabla `auditoria` firmada por usuario en 11 acciones (incluye crear y restaurar respaldo, manual o automático). 53 tests en verde. |
 | 4 — UX y reportes | ✅ Hecha (27/09/2026). Registros paginado de 50 en 50 con filtros recordados (meta, persona, fechas, estado y texto libre) y el Excel bajando todo lo filtrado; PDF mensual por persona desde su ficha; aviso al cargar si se pasa de 8 h/día o 40 h/semana (`CG_HORAS_DIA`, `CG_HORAS_SEMANA`); Excel desde Panel y Persona; página `/auditoria` para el jefe. 59 tests en verde. |
-| 5 — Documentación y entrega | ⬜ Pendiente (README, GUIA y ROADMAP ya llevados al día en las fases 0–4). |
+| 5 — Documentación y entrega | ✅ Hecha (27/09/2026). README con **todas** las variables `CG_*` (incluida `CG_HOST`), la sección *Auditoría* y el botón en el menú; GUIA-ANALISTAS con el aviso de carga excesiva y el bloqueo del login. Verificación final: `ruff` limpio, **59 tests**, arranque real con `iniciar.bat` y `data/sistema.log` sin errores. CI verde en GitHub Actions. |
 
 ---
 
@@ -63,12 +63,13 @@ tabla de [Avance](#avance).
 - El `GH_TOKEN` que está en `.env` es **provisional, solo para esta tarea** de
   commit/push. No es un secreto del producto: no se documenta en README ni en GUIA,
   no se copia a ningún archivo commiteable, y se revoca/cambia después de la entrega.
-- El push final se hace al final de cada fase o al cierre del roadmap, nunca a mitad
-  de una tarea rota.
+- El push se hace **en bloques completos** (varias fases juntas) y nunca a mitad
+  de una tarea rota: GitHub Actions cobra minutos de ejecución mensuales y no
+  conviene gastarlos por gusto.
 
 **Criterio de cierre:** `ruff check .` limpio, `pytest` en verde y `data/sistema.log`
-escribiendo al arrancar. El workflow se valida recién con el push final (Fase 5),
-para no gastar minutos de CI en cada fase.
+escribiendo al arrancar. El workflow de GitHub Actions se valida con el primer push
+del bloque correspondiente.
 
 ---
 

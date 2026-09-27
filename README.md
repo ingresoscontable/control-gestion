@@ -213,7 +213,10 @@ Cada fila guarda **quién** lo hizo (o vacío si fue el sistema), **qué** acci�
 **sobre qué** objeto y una frase resumen, con fecha. Se escribe en la misma
 transacción que la acción: si algo falló, no queda registrada como hecho; y si
 se restaura un respaldo viejo, la fila se escribe **después** del restore, así
-que no se pierde. El detalle página a página se agrega en la Fase 4.
+que no se pierde.
+
+El detalle está en la página **Auditoría** del menú superior (`/auditoria`),
+con filtros por persona, acción y fecha. Solo la ve el jefe.
 
 ---
 
@@ -226,6 +229,7 @@ Variables de entorno*) o editando `iniciar.bat`:
 | Variable            | Por defecto                  | Para qué sirve                       |
 |---------------------|------------------------------|--------------------------------------|
 | `CG_PORT`           | `8000`                       | Puerto del servidor                  |
+| `CG_HOST`           | `0.0.0.0`                    | Dirección en la que escucha. `0.0.0.0` lo deja visible en la red local; poné una IP propia si la PC tiene varias. |
 | `CG_SECRET_KEY`     | (se genera sola)             | Clave que firma la sesión. Si no se define, cada instalación genera la suya y la guarda en `data/.secret_key`; definila a mano solo si querés controlarlo vos. |
 | `CG_DATA_DIR`       | `./data`                     | Carpeta del archivo de base de datos |
 | `CG_ADMIN_USUARIO`  | `jefe`                       | Usuario inicial del jefe             |

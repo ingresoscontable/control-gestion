@@ -7,7 +7,7 @@
 
 Option Explicit
 
-Dim sh, ruta, exe, py, silencioso, i
+Dim sh, ruta, exe, py, puerto, silencioso, i
 Set sh = CreateObject("WScript.Shell")
 ruta = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\"))
 sh.CurrentDirectory = ruta
@@ -19,6 +19,12 @@ Next
 
 exe = ruta & ".venv\Scripts\python.exe"
 py = ruta & "main.py"
+
+' Puerto del servidor: el mismo CG_PORT que leen la aplicacion y los demas
+' scripts (abrir-firewall.bat y detener.bat). Si no esta definido, el 8000 por
+' defecto, asi el mensaje no miente si alguien cambia el puerto.
+puerto = sh.Environment("Process")("CG_PORT")
+If puerto = "" Then puerto = "8000"
 
 If Not sh.FileExists(exe) Then
   If silencioso Then WScript.Quit 1
@@ -34,8 +40,8 @@ sh.Run """" & exe & """ """ & py & """", 0, False
 If Not silencioso Then
   WScript.Sleep 1200
   MsgBox "Servidor iniciado en segundo plano (sin ventana visible)." & vbCrLf & vbCrLf & _
-         "En esta PC:   http://localhost:8000" & vbCrLf & _
-         "Otras PC:     http://<IP de esta PC>:8000" & vbCrLf & vbCrLf & _
+         "En esta PC:   http://localhost:" & puerto & vbCrLf & _
+         "Otras PC:     http://<IP de esta PC>:" & puerto & vbCrLf & vbCrLf & _
          "Para detenerlo: doble clic en detener.bat", _
          vbInformation, "Control de Gestion"
 End If

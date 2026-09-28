@@ -25,7 +25,7 @@ No se tocan, pero quedan anotados por si el sistema crece.
 | 5 — Documentación y entrega | ✅ Hecha (27/09/2026). README con **todas** las variables `CG_*` (incluida `CG_HOST`), la sección *Auditoría* y el botón en el menú; GUIA-ANALISTAS con el aviso de carga excesiva y el bloqueo del login. Verificación final: `ruff` limpio, **59 tests**, arranque real con `iniciar.bat` y `data/sistema.log` sin errores. CI verde en GitHub Actions. |
 | 6 — Revisión del trabajo | ✅ Hecha (27/09/2026). Flujo jefe ↔ empleado: cada reporte nace `pendiente`, el jefe **aprueba** o **devuelve** con observación, la persona **corrige** y vuelve a revisión. Devolver **reversa el avance** de la meta hasta que se corrija. Filtro por estado de revisión, avisos en el panel, columna en el Excel y 2 acciones nuevas de auditoría. Headers de seguridad HTTP y tests divididos por módulo (`tests/conftest.py` + `test_NN_*.py`). **64 tests** en verde. |
 | 7 — Endurecimiento | ✅ Hecha (27/09/2026). **Fuerza bruta lenta cerrada**: los fallos ya no se olvidan por ventana (con `LOGIN_VENTANA=900` y 5 intentos, un ataque de un intento cada 5 min nunca llegaba al límite); ahora se cuentan desde el último acierto y sólo se limpian por inactividad (`LOGIN_OLVIDO`). **Sesiones cortadas al resetear el PIN** (`usuarios.sesion_token`, migración con backfill). Página de **error 500 amigable** con log. Cobertura medida con `pytest-cov` (**93%**, mínimo 90% en CI). **69 tests** en verde. |
-| 8 — Mejoras de gestión | ✅ Hecha (27/09/2026). **Días laborables** (`CG_DIAS_LABORABLES`) y **novedades** (vacaciones, licencia, feriado) que bajan el cumplimiento sin marcar a nadie de incumplidor; **cantidad y unidad** por meta (`objetivo`, `unidad`, `Registro.cantidad`) con el avance priorizando cantidad → horas → reportes; **puntualidad** (cargado el mismo día del trabajo) en panel, ficha, Registros y PDF; **informes por rango de fechas libre** con **comparación** contra el período anterior, en pantalla y PDF (`/reportes`), sobre un único motor de PDF (`generar_pdf_rango`, con el mensual como caso particular); **textos legales** públicos en `/legal/*` (privacidad, cookies, términos y licencia) con el pie en la entrada y en todas las páginas, y `LICENSE` MIT. **121 tests** en verde, cobertura **93%**. |
+| 8 — Mejoras de gestión | ✅ Hecha (27/09/2026). **Días laborables** (`CG_DIAS_LABORABLES`) y **novedades** (vacaciones, licencia, feriado) que bajan el cumplimiento sin marcar a nadie de incumplidor; **cantidad y unidad** por meta (`objetivo`, `unidad`, `Registro.cantidad`) con el avance priorizando cantidad → horas → reportes; **puntualidad** (cargado el mismo día del trabajo) en panel, ficha, Registros y PDF; **informes por rango de fechas libre** con **comparación** contra el período anterior, en pantalla y PDF (`/reportes`), sobre un único motor de PDF (`generar_pdf_rango`, con el mensual como caso particular); **textos legales** públicos en `/legal/*` (privacidad, cookies, términos y licencia) con el pie en la entrada y en todas las páginas, y `LICENSE` MIT. **122 tests** en verde, cobertura **93%**. |
 
 ---
 
@@ -39,7 +39,7 @@ tabla de [Avance](#avance).
 | Stack | FastAPI 0.115 + Jinja2 (SSR) + SQLAlchemy 2 + SQLite + uvicorn |
 | Código | `app/` 2.202 líneas Python, 14 templates, 400 líneas CSS |
 | Rutas | 26 en `app/main.py` (1.068 líneas) |
-| Tests | 34 en `tests/test_app.py`, todos en verde (hoy: 64 en módulos `test_NN_*.py`) |
+| Tests | 34 en `tests/test_app.py`, todos en verde (hoy: 122 en 19 módulos `test_NN_*.py`) |
 | Lint / CI | **No hay** |
 | Índices en la base | Solo `usuarios.usuario` |
 | Journal mode | Rollback (por defecto) — los escritores bloquean lecturas |
@@ -181,6 +181,9 @@ filas, exportar lo que filtra y mandarle a cada persona su PDF.
 | 3 | Rate limit, PIN inicial, auditoría | M | ~3,5 días |
 | 4 | Paginación, búsqueda, PDF por persona, alertas | M–L | ~5 días |
 | 5 | Docs y push final | S | ~5,5 días |
+| 6 | Revisión del trabajo (jefe ↔ empleado) | M | ~6,5 días |
+| 7 | Endurecimiento: rate limit, sesiones, error 500, cobertura | S | ~7 días |
+| 8 | Días laborables, novedades, cantidad, puntualidad, informes, legales | M–L | ~9 días |
 
 ---
 
@@ -198,6 +201,6 @@ Anotados por si el sistema crece. **No entran en ninguna fase.**
 | Redis / caché de panel | SQLite + índices alcanza de sobra para el volumen real. |
 | Tema oscuro / responsive móvil | Nadie lo pidió; la UI está hecha a propósito para Chrome 109 en Win7. |
 | SSO / LDAP / 2FA | El equipo entra con usuario + PIN en una red cerrada. |
-| Dividir `app/main.py` en routers (1.068 líneas) | Estético. Conviene **cuando se toque ese archivo por otra razón**, no como fase propia. |
+| Dividir `app/main.py` en routers (2.008 líneas) | Estético. Conviene **cuando se toque ese archivo por otra razón**, no como fase propia. |
 | Alembic en lugar de `migraciones.py` | Las 5 migraciones que hace hoy el sistema propio son más simples de leer que un setup de Alembic. |
 | Índice de texto (FTS5) para buscar en las descripciones | La búsqueda usa `LIKE '%texto%'` con comodín inicial: **ningún índice puede usarlo**, siempre escanea. Con el volumen real (miles de filas, 3 personas) ni se nota, y una tabla FTS5 + triggers + migración es mucho mantenimiento para cero beneficio hoy. |

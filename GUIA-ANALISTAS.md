@@ -36,6 +36,11 @@ Son tres pasos y no lleva más de un minuto:
    *"avancé"*.
 3. **Pon las horas** y el **estado**, y guarda.
 
+> **¿Y el campo *Cantidad*?** Aparece **solo cuando la meta se mide por
+> unidades** (por ejemplo *liquidaciones* o *trámites*): ahí va cuánto hiciste.
+> Si el campo está y lo dejás vacío, esa meta se queda sin avance. En las metas
+> que no se miden por cantidad no lo vas a ver.
+
 Cárgalo **el mismo día**. Si te olvidaste de uno, cambia la fecha en el
 formulario y guárdalo igual: se acepta desde hace 30 días hasta hoy. Solo se
 puede guardar **un reporte por día y por meta**, así que si ya cargaste algo,
@@ -60,11 +65,21 @@ el estado, y la fecha se pone en hoy. Revisa el texto y guarda.
 
 ## 4. Cómo se mide el avance de una meta
 
-La barra de progreso de cada meta se llena así:
+La barra de progreso se llena con **lo que la meta tenga cargado**, en este
+orden:
 
-- Si la meta tiene **horas estimadas**: con las horas que vas registrando.
-- Si no las tiene: con la proporción de reportes que marcas como **completados**.
-- Cuando el jefe **cierra** la meta, pasa a 100%.
+1. Si la meta tiene un **objetivo en cantidad** (por ejemplo 40 liquidaciones):
+   con la **cantidad** que vas informando cada día.
+2. Si no tiene cantidad pero sí **horas estimadas**: con las horas que vas
+   registrando.
+3. Si no tiene ninguna de las dos: con la proporción de reportes que marcas como
+   **completados**.
+
+Cuando el jefe **cierra** la meta, pasa a 100%.
+
+> Ojo con esto: un reporte que el jefe **te devuelve** para corregir **deja de
+> contar** para el avance hasta que lo arregles. Si ves que un porcentaje bajó,
+> puede ser por eso.
 
 ---
 
@@ -74,8 +89,8 @@ La barra de progreso de cada meta se llena así:
   reportes, con una observación. Es solo para leer, no se edita.
 - **Reporte devuelto para corregir** — un cartel rojo arriba del panel cuando el
   jefe revisó un reporte tuyo y pidió cambios. Trae el enlace **Corregir**:
-  ajustá la descripción, las horas y el estado, guardá, y el reporte vuelve solo
-  a la bandeja del jefe. La fecha no se cambia; si estaba mal, borrá el reporte y
+  ajustá la descripción, las horas, la cantidad y el estado, guardá, y el reporte
+  vuelve solo a la bandeja del jefe. La fecha no se cambia; si estaba mal, borrá el reporte y
   cargá uno nuevo con la fecha correcta.
 - **Aviso de plazo vencido** — un cartel rojo arriba del panel cuando alguna de
   tus metas pasó la fecha límite. No es una sanción, es para que lo tengas
@@ -99,6 +114,7 @@ La barra de progreso de cada meta se llena así:
 | Te equivocaste en un reporte | Bórralo con *Eliminar* y vuelve a cargarlo. |
 | El jefe te devolvió un reporte | Entrá al enlace *Corregir* del aviso rojo, arreglalo y guardá: vuelve solo a revisión. |
 | Te sale *"Ya hay un registro de ese día para esa meta"* | Ese día ya tenés uno cargado: borrá el anterior o guardá el nuevo con otra fecha. |
+| Entrás un sábado, un domingo o un feriado y el panel no te pide el reporte | Es correcto: el sistema solo reclama los **días laborables**. Si igual trabajaste, podés cargarlo. |
 | No te deja poner la fecha | Sólo se carga desde hace 30 días hasta hoy. Si es más viejo que eso, preguntale al jefe. |
 | Quieres cambiar tu PIN | Enlace *Guía* o *Ayuda* → **Cambiar mi PIN**. |
 

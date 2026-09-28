@@ -66,6 +66,27 @@ Mientras no lo cambies, las credenciales quedan escritas en
 `data/primer-ingreso.txt` por si las necesitás volver a leer. **Ese archivo se
 borra solo** en cuanto el jefe cambia su PIN.
 
+### Antes de que lo usen todos
+
+Cuatro cosas que conviene dejar listas el mismo día de la instalación:
+
+1. **Internet, una sola vez.** `instalar.bat` baja las dependencias de Python:
+   esa PC necesita internet **durante la instalación**. Después no: el sistema
+   funciona sin internet.
+2. **Que la IP no cambie.** Anotá la IP que aparece como *Otras PC* y pedí una
+   **IP fija (o reserva por DHCP)** para esa PC. Si la IP cambia, los favoritos
+   de las demás dejan de funcionar.
+3. **Que la PC no se suspenda.** Si la PC servidor se suspende, el sistema deja
+   de responder. Poné la suspensión en **Nunca** mientras esté enchufada
+   (*Configuración → Sistema → Inicio/apagado*).
+4. **Entrá primero desde la propia PC** (`http://localhost:8000`), cambiá el PIN
+   del jefe, creá los usuarios del equipo *y recién después* instalá el arranque
+   automático. Es más fácil ver qué pasa si el servidor arranca con la ventana
+   visible.
+
+> **La prueba que no falla:** entrar desde **otra PC** con la IP. `localhost`
+> solo funciona en la propia PC del servidor.
+
 ---
 
 ## Uso desde las otras PC
@@ -314,15 +335,27 @@ Variables de entorno*) o editando `iniciar.bat`:
 | `CG_HORAS_SEMANA`   | `40`                        | Horas en la semana a partir de las cuales aparece el aviso (aviso, no bloquea) |
 | `CG_DIAS_LABORABLES` | `1,2,3,4,5`                | Días laborables (1 = lunes … 7 = domingo). Los sábados y domingos no cuentan para el cumplimiento ni se reclaman como día sin reporte. |
 
-Ejemplo para guardar los respaldos en un pendrive, dentro de `iniciar.bat`:
+Para guardar los respaldos en un pendrive, por ejemplo:
 
 ```bat
 set CG_BACKUP_DIR=D:\Respaldos\ControlGestion
 call ".venv\Scripts\python.exe" main.py
 ```
 
-> **Nota:** el programa **no** lee archivos `.env`: las variables tienen que
-> estar en el entorno de Windows o en `iniciar.bat`. Un `.env` en la raíz se usa
+> **Ojo con dónde las ponés.** Lo más seguro es cargarlas en el **entorno de
+> Windows** (*Variables de entorno*). Si las ponés dentro de `iniciar.bat`, valen
+> **solo** cuando arrancás con `iniciar.bat`: el **arranque automático**
+> (`instalar-arranque.bat` → `iniciar-oculto.vbs`) llama a Python directamente y
+> **no pasa por `iniciar.bat`**, así que `CG_BACKUP_DIR`, `CG_PORT` o `CG_HOST`
+> definidas ahí se ignoran y vuelven a los valores por defecto.
+
+> **Si cambiás el puerto (`CG_PORT`):** `abrir-firewall.bat` y `detener.bat`
+> también leen esa variable del entorno de Windows. Si la definís solo en
+> `iniciar.bat`, esos dos scripts siguen usando el **8000**: el firewall abre el
+> puerto equivocado (las otras PC no entran) y `detener.bat` no encuentra el
+> servidor.
+
+> **Nota:** el programa **no** lee archivos `.env`: un `.env` en la raíz se usa
 > solo para herramientas de desarrollo y está ignorado por git (ver
 > `.gitignore`).
 
@@ -408,9 +441,11 @@ Las pruebas, la cobertura y el analizador corren solos en GitHub Actions con cad
 push (`.github/workflows/ci.yml`).
 
 > **Correr un módulo suelto:** los archivos `tests/test_NN_*.py` comparten la
-> misma base durante la corrida y algunos se apoyan en datos que cargaron los
-> anteriores, así que lo normal es correr `pytest tests` entero.
-> `tests/test_14_revision.py` sí es autocontenido.
+> misma base durante la corrida y los primeros se apoyan en datos que cargaron
+> los anteriores, así que lo normal es correr `pytest tests` entero. Los módulos
+> **de `test_14_revision.py` a `test_19_informes_rango.py`** sí son
+> autocontenidos (arman sus propios datos con fechas fijas), así que se pueden
+> correr sueltos.
 
 ---
 

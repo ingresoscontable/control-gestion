@@ -166,7 +166,9 @@ Cada reporte diario tiene un **estado de revisión**: *Pendiente de revisión*,
 *Aprobado* o *Corrección pendiente*.
 
 - Todo reporte nace **pendiente**. El panel del jefe avisa cuántos hay esperando
-  revisión, con un enlace directo a la lista filtrada.
+  revisión, con un enlace directo a la lista filtrada. A las analistas el mismo
+  aviso les aparece como *"reportes esperando la revisión del jefe"*, sin el
+  enlace: ellas no revisan nada, y `/registros` es una página del jefe.
 - El jefe **Aprueba** el reporte (queda marcado *Aprobado*) o lo **Devuelve**
   escribiendo qué hay que corregir (queda *Corrección pendiente*). Devolverlo
   **reversa el avance**: ese reporte deja de sumar para el progreso de la meta

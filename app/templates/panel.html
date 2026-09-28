@@ -20,10 +20,20 @@
 </div>
 {% endif %}
 
+{# Solo el jefe revisa reportes: para las analistas el mismo aviso es
+   informativo, sin el enlace a /registros (que es una pagina del jefe). #}
 {% if por_revisar %}
 <div class="alerta">
+  {% if usuario.es_jefe %}
   <strong>{{ por_revisar }} reporte(s) esperando tu revisión.</strong>
   <a href="/registros?revision=pendiente">Revisarlos ahora</a>
+  {% else %}
+  <strong>{{ por_revisar }} reporte(s) esperando la revisión del jefe.</strong>
+  <p class="small">
+    Todavía sin revisar. El avance de las metas se confirma cuando el jefe
+    aprueba los reportes.
+  </p>
+  {% endif %}
 </div>
 {% endif %}
 

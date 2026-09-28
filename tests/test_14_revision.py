@@ -173,6 +173,36 @@ def test_flujo_de_revision_completo(client):
     assert {"revisar_registro", "corregir_registro"} <= _acciones_de_auditoria()
 
 
+def test_el_aviso_de_revision_cambia_segun_quien_mira(client):
+    """Solo el jefe revisa: la analista ve el aviso informativo y sin el boton."""
+    empleado = _empleado_id()
+    _entrar(client, "jefe", "1234")
+    meta_id = _crear_meta(client, "Meta del aviso de revision", empleado)
+
+    # Un reporte pendiente de la analista es lo que alimenta el aviso.
+    _entrar(client, EMPLEADO_USUARIO, EMPLEADO_PIN)
+    client.post(
+        "/registros",
+        data={
+            "meta_id": str(meta_id),
+            "descripcion": "Pendiente para el aviso de revision",
+            "horas": "1",
+        },
+    )
+
+    panel = client.get("/").text
+    assert "esperando la revisión del jefe" in panel
+    # Ni el texto del jefe ni el enlace a una pagina que no puede abrir.
+    assert "esperando tu revisión" not in panel
+    assert "Revisarlos ahora" not in panel
+    assert "/registros?revision=pendiente" not in panel
+
+    _entrar(client, "jefe", "1234")
+    panel_jefe = client.get("/").text
+    assert "esperando tu revisión" in panel_jefe
+    assert "Revisarlos ahora" in panel_jefe
+
+
 def test_devolver_reversa_el_avance_de_la_meta(client):
     """Un reporte devuelto deja de sumar hasta que se corrija."""
     empleado = _empleado_id()

@@ -80,6 +80,10 @@ La barra de progreso de cada meta se llena así:
 - **Aviso de plazo vencido** — un cartel rojo arriba del panel cuando alguna de
   tus metas pasó la fecha límite. No es una sanción, es para que lo tengas
   presente.
+- **Aviso de revisión del jefe** — un cartel arriba del panel que te cuenta
+  cuántos reportes están esperando la revisión del jefe. **No es algo que tengas
+  que hacer vos**: solo el jefe revisa, así que es informativo. El avance de esas
+  metas se confirma cuando el jefe las aprueba.
 - **Aviso de carga excesiva** — si al guardar te dice que cargaste más de 8
   horas en un día o más de 40 en la semana, es un cartel para revisar si fue
   un error de tipeo. **El reporte se guarda igual**, no te bloquea nada.

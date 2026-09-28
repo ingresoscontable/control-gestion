@@ -7,8 +7,11 @@
 
 Option Explicit
 
-Dim sh, ruta, exe, py, puerto, silencioso, i
+Dim fso, sh, ruta, exe, py, puerto, silencioso, i
 Set sh = CreateObject("WScript.Shell")
+' FileExists es de FileSystemObject, no de WScript.Shell: sin esto sale el
+' error 800A01B6 ("El objeto no acepta esta propiedad o metodo").
+Set fso = CreateObject("Scripting.FileSystemObject")
 ruta = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\"))
 sh.CurrentDirectory = ruta
 
@@ -26,7 +29,7 @@ py = ruta & "main.py"
 puerto = sh.Environment("Process")("CG_PORT")
 If puerto = "" Then puerto = "8000"
 
-If Not sh.FileExists(exe) Then
+If Not fso.FileExists(exe) Then
   If silencioso Then WScript.Quit 1
   MsgBox "Todavia no esta instalado." & vbCrLf & vbCrLf & _
          "Ejecuta primero instalar.bat.", _

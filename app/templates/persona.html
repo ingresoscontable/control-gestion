@@ -28,6 +28,20 @@
       <span class="stat-num">{{ total_comentarios }}</span>
       <span class="stat-label">con comentario tuyo</span>
     </div>
+    <div class="stat">
+      <span class="stat-num">
+        {%- if puntualidad.porcentaje is not none -%}
+          {{ puntualidad.porcentaje }}%
+        {%- else -%}
+          —
+        {%- endif -%}
+      </span>
+      <span class="stat-label">cargado el mismo día</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">{{ puntualidad.tarde }}</span>
+      <span class="stat-label">con fecha atrasada</span>
+    </div>
   </div>
 
   {% if mostrados < total %}
@@ -98,7 +112,7 @@
   {% if registros %}
   <table class="tabla">
     <thead>
-      <tr><th>Fecha</th><th>Meta</th><th>Qué hizo</th><th>Horas</th><th>Estado</th><th>Comentario</th></tr>
+      <tr><th>Fecha</th><th>Meta</th><th>Qué hizo</th><th>Horas</th><th>Cantidad</th><th>Estado</th><th>Comentario</th><th>Revisión</th></tr>
     </thead>
     <tbody>
       {% for r in registros %}
@@ -107,6 +121,7 @@
         <td>{{ r.meta.titulo if r.meta else '—' }}</td>
         <td class="desc">{{ r.descripcion }}</td>
         <td>{{ '%.1f'|format(r.horas) }}</td>
+        <td>{{ '%.0f'|format(r.cantidad) if r.cantidad else '—' }}</td>
         <td><span class="badge {{ r.estado }}">{{ r.estado.replace('_', ' ') }}</span></td>
         <td class="comentario">
           {% if r.comentario %}
@@ -116,10 +131,14 @@
             {% endif %}
           {% endif %}
           <form method="post" action="/registros/{{ r.id }}/comentario" class="inline">
-            <input type="hidden" name="volver" value="/registros">
+            <input type="hidden" name="volver" value="/personas/{{ persona.id }}">
             <input type="text" name="comentario" value="{{ r.comentario or '' }}" placeholder="Observación...">
             <button type="submit" class="link">Guardar</button>
           </form>
+        </td>
+        <td class="revision">
+          {% set volver = '/personas/' ~ persona.id %}
+          {% include "_revision.html" %}
         </td>
       </tr>
       {% endfor %}

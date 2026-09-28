@@ -51,6 +51,18 @@
     </label>
 
     <label>
+      Objetivo en cantidad (opcional)
+      <input type="number" name="objetivo" min="0" step="1"
+             value="{{ '%.0f'|format(meta.objetivo or 0) }}">
+    </label>
+
+    <label>
+      Unidad de esa cantidad (opcional)
+      <input type="text" name="unidad" maxlength="30" value="{{ meta.unidad or '' }}"
+             placeholder="Ej: trámites, registros, liquidaciones">
+    </label>
+
+    <label>
       Estado
       <select name="estado">
         <option value="activa" {% if meta.estado == 'activa' %}selected{% endif %}>Activa</option>
@@ -61,7 +73,9 @@
 
     <label>
       Avance actual
-      <input type="text" value="{{ progreso.avance if progreso else 0 }}% · {{ progreso.reportes if progreso else 0 }} reporte(s)" disabled>
+      <input type="text"
+             value="{{ progreso.avance if progreso else 0 }}% · {{ progreso.reportes if progreso else 0 }} reporte(s)"
+             disabled>
     </label>
 
     <div class="full">

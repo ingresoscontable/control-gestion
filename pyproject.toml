@@ -9,3 +9,15 @@ ignore = ["B008"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["SIM"]
+
+[tool.coverage.run]
+# main.py (86 lineas) es solo el arranque del servidor: lo levanta iniciar.bat,
+# no las pruebas, asi que medirlo ensuciaria el numero.
+source = ["app"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]

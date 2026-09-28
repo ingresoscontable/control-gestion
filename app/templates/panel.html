@@ -5,6 +5,28 @@
 <h1>Hola, {{ usuario.nombre.split(' ')[0] }}</h1>
 <p class="sub">Hoy es {{ hoy.strftime('%d/%m/%Y') }}</p>
 
+{% if not usuario.es_jefe and devueltos %}
+<div class="alerta vencida">
+  <strong>{{ devueltos|length }} reporte(s) que el jefe te devolvió para corregir:</strong>
+  <div class="vencidas-lista">
+    {% for r in devueltos %}
+    <span class="pill warn">
+      {{ r.fecha.strftime('%d/%m/%Y') }} ·
+      {{ r.meta.titulo if r.meta else 'sin meta específica' }}
+      · <a href="/registros/{{ r.id }}/corregir">Corregir</a>
+    </span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if por_revisar %}
+<div class="alerta">
+  <strong>{{ por_revisar }} reporte(s) esperando tu revisión.</strong>
+  <a href="/registros?revision=pendiente">Revisarlos ahora</a>
+</div>
+{% endif %}
+
 {% if vencidas %}
 <div class="alerta vencida">
   <strong>
@@ -42,7 +64,7 @@
         <select name="meta_id">
           <option value="">— Sin meta específica —</option>
           {% for m in mis_metas %}
-          <option value="{{ m.id }}" {% if a_repetir and a_repetir.meta_id == m.id %}selected{% endif %}>{{ m.titulo }}</option>
+          <option value="{{ m.id }}" {% if a_repetir and a_repetir.meta_id == m.id %}selected{% endif %}>{{ m.titulo }}{% if m.unidad %} · {{ m.unidad }}{% endif %}{% if m.objetivo %} (objetivo {{ '%.0f'|format(m.objetivo) }}){% endif %}</option>
           {% endfor %}
         </select>
       </label>
@@ -51,6 +73,11 @@
         Qué hiciste hoy
         <textarea name="descripcion" rows="3" placeholder="Ej: Concilié las cuentas por cobrar de septiembre..." required>{{ a_repetir.descripcion if a_repetir else '' }}</textarea>
       </label>
+      <p class="full muted small">
+        Contá <strong>qué hiciste y cómo va el trabajo</strong>. No escribas
+        montos, saldos ni números de cuenta: el detalle numérico va por el canal
+        interno, no por acá.
+      </p>
 
       <label>
         Fecha
@@ -61,6 +88,11 @@
       <label>
         Horas dedicadas
         <input type="number" name="horas" value="{{ a_repetir.horas if a_repetir else 0 }}" min="0" max="24" step="0.5">
+      </label>
+
+      <label>
+        Cantidad (opcional)
+        <input type="number" name="cantidad" value="{{ '%.0f'|format(a_repetir.cantidad) if a_repetir else 0 }}" min="0" step="1">
       </label>
 
       <label>
@@ -87,10 +119,15 @@
       {{ equipo|length }} persona(s) activas
     </p>
 
-    {% if registrar_hoy %}
+    {% if not hoy_laborable %}
+    <div class="alerta ok">
+      <strong>Hoy no es día laborable.</strong>
+      No se espera que nadie registre.
+    </div>
+    {% elif registrar_hoy %}
     <div class="alerta">
       <strong>Sin registrar hoy:</strong>
-      {% for u in registrar_hoy %}<span class="pill warn">{{ u.nombre }}</span>{% endfor %}
+      {% for u in registrar_hoy %}<span class="pill warn falta-registro">{{ u.nombre }}</span>{% endfor %}
     </div>
     {% else %}
     <div class="alerta ok"><strong>Todo el equipo registró hoy.</strong></div>
@@ -140,7 +177,7 @@
   <h2>Resumen de la semana · {{ semana_inicio.strftime('%d/%m') }} al {{ semana_fin.strftime('%d/%m/%Y') }}</h2>
   <table class="tabla">
     <thead>
-      <tr><th>Persona</th><th>Registros</th><th>Días con registro</th><th>Horas</th><th>Cumplimiento</th></tr>
+      <tr><th>Persona</th><th>Registros</th><th>Días con registro</th><th>Horas</th><th>Puntualidad</th><th>Cumplimiento</th></tr>
     </thead>
     <tbody>
       {% for fila in resumen_semana %}
@@ -150,11 +187,18 @@
           {% if fila.usuario.cargo %}<div class="muted small">{{ fila.usuario.cargo }}</div>{% endif %}
         </td>
         <td>{{ fila.registros }}</td>
-        <td>{{ fila.dias }} de 5</td>
+        <td>{{ fila.dias }} de {{ fila.laborables }}</td>
         <td>{{ '%.1f'|format(fila.horas) }}</td>
         <td>
-          {% if fila.dias >= 5 %}<span class="badge completado">al día</span>
-          {% elif fila.dias >= 3 %}<span class="badge en_progreso">parcial</span>
+          {% if fila.puntualidad is not none %}
+          {{ fila.puntualidad }}%
+          <div class="muted small">en fecha</div>
+          {% else %}—{% endif %}
+        </td>
+        <td>
+          {% if fila.cumplimiento == 'al_dia' %}<span class="badge completado">al día</span>
+          {% elif fila.cumplimiento == 'parcial' %}<span class="badge en_progreso">parcial</span>
+          {% elif fila.cumplimiento == 'sin_laborables' %}<span class="badge pendiente">n/a</span>
           {% else %}<span class="badge bloqueado">sin reportar</span>{% endif %}
         </td>
       </tr>
@@ -162,8 +206,13 @@
     </tbody>
   </table>
   <p class="muted small">
-    Cuenta los reportes cargados de lunes a domingo de la semana en curso.
-    La referencia de cumplimiento son 5 días laborables por persona.
+    Cuenta los reportes de lunes a domingo de la semana en curso, sólo en los
+    días laborables ({{ dias_laborables_txt }}). Las novedades (vacaciones,
+    licencias, feriados) bajan los días esperados de cada persona.
+    <a href="/novedades">Cargar una novedad</a>.
+    <br>
+    <strong>Puntualidad</strong> es el porcentaje cargado el mismo día en que se
+    hizo el trabajo: cargar hoy lo de la semana pasada cuenta como tardío.
   </p>
 </section>
 {% endif %}
@@ -214,7 +263,7 @@
     <thead>
       <tr>
         {% if usuario.es_jefe %}<th>Persona</th>{% endif %}
-        <th>Fecha</th><th>Meta</th><th>Qué hizo</th><th>Horas</th><th>Estado</th><th>Comentario</th><th></th>
+        <th>Fecha</th><th>Meta</th><th>Qué hizo</th><th>Horas</th><th>Cantidad</th><th>Estado</th><th>Comentario</th><th>Revisión</th><th></th>
       </tr>
     </thead>
     <tbody>
@@ -225,6 +274,7 @@
         <td>{{ r.meta.titulo if r.meta else '—' }}</td>
         <td class="desc">{{ r.descripcion }}</td>
         <td>{{ '%.1f'|format(r.horas) }}</td>
+        <td>{{ '%.0f'|format(r.cantidad) if r.cantidad else '—' }}</td>
         <td><span class="badge {{ r.estado }}">{{ r.estado.replace('_', ' ') }}</span></td>
         <td class="comentario">
           {% if r.comentario %}
@@ -242,6 +292,10 @@
             <button type="submit" class="link">Guardar</button>
           </form>
           {% endif %}
+        </td>
+        <td class="revision">
+          {% set volver = '/' %}
+          {% include "_revision.html" %}
         </td>
         <td>
           {% if r.usuario_id == usuario.id %}

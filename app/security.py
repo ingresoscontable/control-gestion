@@ -12,17 +12,22 @@ import socket
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 
 from . import config
 
 ITERACIONES = 120_000
 ALGORITMO = "sha256"
 
-# Login: cuantos fallos seguidos aguanta y cuanto se bloquea.
+# Login: cuantos fallos aguanta y cuanto se bloquea.
 LOGIN_INTENTOS = 5
 LOGIN_BLOQUEO = 300.0  # 5 minutos
 LOGIN_BLOQUEO_MAXIMO = 1800.0  # 30 minutos, con backoff
-LOGIN_VENTANA = 900.0  # los fallos se olvidan a los 15 minutos
+# Cuanto se recuerda una clave sin actividad. No es la ventana de conteo: los
+# fallos NO se olvidan con el tiempo (si se olvidaran, un ataque lento de un
+# intento cada tanto nunca llegaria al limite). Solo sirve para que el
+# diccionario en memoria no crezca sin limite.
+LOGIN_OLVIDO = 86400.0  # 24 horas
 
 
 def hash_pin(pin: str) -> str:
@@ -63,12 +68,17 @@ def valida_pin(pin: str) -> str | None:
 
 
 class LimitadorDeIntentos:
-    """Bloquea el login tras varios fallos seguidos de la misma IP y usuario.
+    """Bloquea el login tras varios fallos de la misma IP y usuario.
+
+    Los fallos se cuentan **desde el ultimo acierto** y no se olvidan con el
+    tiempo: si se olvidaran por ventana, un ataque lento (un intento cada
+    tanto) nunca llegaria al limite y el bloqueo seria decorativo. Al llegar
+    al limite la clave se bloquea con backoff (5, 10, 20... hasta el tope) y
+    el contador arranca de cero, asi el castigo se renueva cada ciclo.
 
     Los endpoints son `def` y corren en el threadpool, asi que todo lo que
     toca el contador va bajo un Lock. Vive en memoria: al reiniciar el
-    proceso se olvida, que es lo que corresponde. Cada vez que vuelve a
-    bloquear, el bloqueo se dobla (backoff) hasta el tope.
+    proceso se olvida, que es lo que corresponde.
     """
 
     def __init__(
@@ -76,47 +86,70 @@ class LimitadorDeIntentos:
         intentos: int = LOGIN_INTENTOS,
         bloqueo: float = LOGIN_BLOQUEO,
         bloqueo_maximo: float = LOGIN_BLOQUEO_MAXIMO,
-        ventana: float = LOGIN_VENTANA,
+        olvido: float = LOGIN_OLVIDO,
+        reloj: Callable[[], float] = time.monotonic,
     ):
         self.intentos = intentos
         self.bloqueo = bloqueo
         self.bloqueo_maximo = bloqueo_maximo
-        self.ventana = ventana
-        self._fallos: dict[str, list[float]] = {}
+        self.olvido = olvido
+        self.reloj = reloj
+        self._fallos: dict[str, int] = {}
         self._bloqueos: dict[str, float] = {}
         self._ciclos: dict[str, int] = {}
+        self._ultimo: dict[str, float] = {}
         self._lock = threading.Lock()
 
     def restante(self, clave: str) -> float:
         """Segundos que faltan para volver a dejar intentar (0 = libre)."""
         with self._lock:
-            faltan = self._bloqueos.get(clave, 0.0) - time.monotonic()
+            faltan = self._bloqueos.get(clave, 0.0) - self.reloj()
             return faltan if faltan > 0 else 0.0
 
     def registrar_fallo(self, clave: str) -> float:
         """Suma un fallo y devuelve los segundos de bloqueo (0 = sigue libre)."""
         with self._lock:
-            ahora = time.monotonic()
-            recientes = [
-                t for t in self._fallos.get(clave, ()) if ahora - t <= self.ventana
-            ]
-            recientes.append(ahora)
-            self._fallos[clave] = recientes
-            if len(recientes) < self.intentos:
+            ahora = self.reloj()
+            self._descartar_viejos(ahora)
+            self._ultimo[clave] = ahora
+
+            fallos = self._fallos.get(clave, 0) + 1
+            if fallos < self.intentos:
+                self._fallos[clave] = fallos
                 return 0.0
+
             ciclo = self._ciclos.get(clave, 0) + 1
             self._ciclos[clave] = ciclo
             duracion = min(self.bloqueo * (2 ** (ciclo - 1)), self.bloqueo_maximo)
             self._bloqueos[clave] = ahora + duracion
-            del self._fallos[clave]
+            # Se libero el bloqueo: el proximo ciclo vuelve a contar desde cero.
+            self._fallos[clave] = 0
             return duracion
 
     def limpiar(self, clave: str) -> None:
         """Un login bien hecho empieza de cero con esa clave."""
         with self._lock:
-            self._fallos.pop(clave, None)
-            self._bloqueos.pop(clave, None)
-            self._ciclos.pop(clave, None)
+            self._olvidar(clave)
+
+    def _olvidar(self, clave: str) -> None:
+        self._fallos.pop(clave, None)
+        self._bloqueos.pop(clave, None)
+        self._ciclos.pop(clave, None)
+        self._ultimo.pop(clave, None)
+
+    def _descartar_viejos(self, ahora: float) -> None:
+        """Tira las claves sin actividad para que el diccionario no crezca.
+
+        Se llama bajo el Lock. El diccionario es chico (una entrada por IP +
+        usuario que fallo en el ultimo dia), asi que el barrido es barato.
+        """
+        viejas = [
+            clave
+            for clave, ultimo in self._ultimo.items()
+            if ahora - ultimo > self.olvido
+        ]
+        for clave in viejas:
+            self._olvidar(clave)
 
 
 intentos_login = LimitadorDeIntentos()

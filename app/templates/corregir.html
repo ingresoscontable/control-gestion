@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block titulo %}Corregir reporte · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Corregir el reporte del {{ registro.fecha.strftime('%d/%m/%Y') }}</h1>
+<p class="sub">
+  {{ registro.meta.titulo if registro.meta else 'Sin meta específica' }} ·
+  <a href="/">Volver al panel</a>
+</p>
+
+{% if registro.observacion_revision %}
+<div class="alerta">
+  <strong>El jefe pidió:</strong>
+  <div class="observacion-revision">{{ registro.observacion_revision }}</div>
+</div>
+{% endif %}
+
+<section class="card">
+  <form method="post" action="/registros/{{ registro.id }}/corregir" class="form-grid">
+    <label class="full">
+      Qué hiciste
+      <textarea name="descripcion" rows="3" required>{{ registro.descripcion }}</textarea>
+    </label>
+
+    <p class="full muted small">
+      Ojo: no escribas montos, saldos ni números de cuenta. El detalle numérico
+      va por el canal interno, no por este sistema.
+    </p>
+
+    <label>
+      Horas dedicadas
+      <input type="number" name="horas" value="{{ registro.horas }}" min="0" max="24" step="0.5">
+    </label>
+
+    <label>
+      Cantidad{% if registro.meta and registro.meta.unidad %} ({{ registro.meta.unidad }}){% endif %}
+      <input type="number" name="cantidad" value="{{ '%.0f'|format(registro.cantidad) }}" min="0" step="1">
+    </label>
+
+    <label>
+      Estado
+      <select name="estado">
+        {% for clave, etiqueta in estados_registro %}
+        <option value="{{ clave }}" {% if clave == registro.estado %}selected{% endif %}>{{ etiqueta }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <div class="full">
+      <button type="submit" class="btn primary">Guardar corrección</button>
+    </div>
+  </form>
+  <p class="muted small">
+    Al guardar, el reporte vuelve solo a la bandeja del jefe para que lo revise
+    otra vez. La fecha no se cambia; si estaba mal, borrá este reporte y cargá
+    uno nuevo con la fecha correcta.
+  </p>
+</section>
+
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }} · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<article class="legal">
+  <h1>{{ titulo }}</h1>
+  <p class="muted small">
+    Versión {{ version_legal }} · Última actualización: {{ actualizado_legal }}
+  </p>
+
+  {% include "legal/_nav.html" %}
+
+  <p>
+    <strong>Resumen en una línea:</strong> el sistema usa
+    <strong>una sola cookie</strong>, la que mantiene la sesión iniciada.
+    No hay cookies de publicidad, de análisis ni de redes sociales.
+  </p>
+
+  <h2>1. La única cookie que usa el sistema</h2>
+  <div class="card">
+    <table class="tabla">
+      <thead>
+        <tr>
+          <th>Nombre</th><th>Finalidad</th><th>Tipo</th><th>Duración</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>session</code></td>
+          <td>
+            Mantener la sesión iniciada: guarda el identificador del usuario y
+            un token de sesión que se renueva al cambiar o resetear el PIN.
+          </td>
+          <td>Técnica, propia</td>
+          <td>Hasta 14 días, o hasta cerrar sesión</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>2. Qué NO se usa</h2>
+  <ul>
+    <li>Cookies de publicidad o de seguimiento.</li>
+    <li>Cookies o etiquetas de análisis (Google Analytics, Matomo ni similares).</li>
+    <li>Cookies de terceros, ni botones sociales que las carguen.</li>
+    <li>Almacenamiento local del navegador con información de trabajo.</li>
+  </ul>
+
+  <h2>3. Si desactivás las cookies</h2>
+  <p>
+    La cookie <code>session</code> es imprescindible: sin ella el sistema no
+    puede saber quién sos y no se puede iniciar sesión. No hay nada que
+    "aceptar u optar" porque no se coloca ninguna cookie que no sea necesaria
+    para que la herramienta funcione.
+  </p>
+
+  <h2>4. Propiedad y seguridad de la cookie</h2>
+  <p>
+    La cookie es propia de este sistema (no la comparte ningún otro sitio),
+    tiene las marcas <code>HttpOnly</code> y <code>SameSite=Lax</code> y se
+    borra al cerrar sesión desde el botón <em>Salir</em>.
+  </p>
+
+  <h2>5. Nota sobre la normativa aplicable (Venezuela)</h2>
+  <p>
+    Este texto es un <strong>modelo orientativo</strong> y no constituye
+    asesoramiento legal. En Venezuela no hay, a la fecha de esta versión, una
+    ley especial de protección de datos personales vigente; el marco aplicable
+    es, sobre todo, el artículo 60 de la Constitución (privacidad, intimidad y
+    habeas data). Quien administra la instalación debe revisar este texto con la
+    asesoría jurídica del organismo y actualizarlo si cambia la normativa.
+  </p>
+</article>
+
+{% endblock %}

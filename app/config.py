@@ -62,6 +62,18 @@ DIAS_ATRASO = int(os.environ.get("CG_DIAS_ATRASO", "30"))
 HORAS_DIA = float(os.environ.get("CG_HORAS_DIA", "8"))
 HORAS_SEMANA = float(os.environ.get("CG_HORAS_SEMANA", "40"))
 
+# Dias que cuentan como laborables (1 = lunes ... 7 = domingo). Sobre esto se
+# mide el cumplimiento semanal; cargar un sabado no lo infla.
+DIAS_LABORABLES = tuple(
+    dia
+    for dia in (
+        int(parte)
+        for parte in os.environ.get("CG_DIAS_LABORABLES", "1,2,3,4,5").split(",")
+        if parte.strip().isdigit()
+    )
+    if 1 <= dia <= 7
+) or (1, 2, 3, 4, 5)
+
 # Respaldos automaticos de la base de datos.
 BACKUP_DIR = Path(os.environ.get("CG_BACKUP_DIR", DATA_DIR / "respaldos"))
 # Cada cuantas horas se hace un respaldo automatico.

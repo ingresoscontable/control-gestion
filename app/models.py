@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from datetime import date, datetime
 
 from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Index, String, Text
@@ -18,11 +19,42 @@ ESTADOS_REGISTRO = [
     ("bloqueado", "Bloqueado"),
 ]
 
+# Revision del jefe sobre cada reporte: se carga "pendiente", el jefe lo
+# aprueba o lo devuelve para corregir, y al corregirlo vuelve a "pendiente".
+ESTADOS_REVISION = [
+    ("pendiente", "Pendiente de revisión"),
+    ("aprobado", "Aprobado"),
+    ("correccion_pendiente", "Corrección pendiente"),
+]
+
+# Un reporte devuelto por el jefe no cuenta para el avance de la meta hasta
+# que se corrija: eso es la "reversion del progreso".
+REVISION_DEVUELTA = "correccion_pendiente"
+
+# Novedades: dias en que una persona (o todo el equipo) no cuenta para el
+# cumplimiento semanal.
+TIPOS_NOVEDAD = [
+    ("vacaciones", "Vacaciones"),
+    ("licencia", "Licencia"),
+    ("feriado", "Feriado"),
+    ("otro", "Otro"),
+]
+
 ESTADOS_META = ["activa", "cerrada", "eliminada"]
 
 # Estado de archivo: la meta desaparece de las pantallas pero conserva sus
 # reportes y se puede restaurar.
 ESTADO_ELIMINADA = "eliminada"
+
+
+def nuevo_token_de_sesion() -> str:
+    """Token que viaja en la cookie de sesion de cada usuario.
+
+    Al cambiar (o resetear) el PIN se genera uno nuevo: las sesiones que ya
+    estaban abiertas dejan de valer, que es lo que corresponde cuando alguien
+    sospecha que le vieron el PIN.
+    """
+    return secrets.token_urlsafe(16)
 
 
 class Usuario(Base):
@@ -35,6 +67,8 @@ class Usuario(Base):
     rol: Mapped[str] = mapped_column(String(20), default=ROL_EMPLEADO)
     cargo: Mapped[str] = mapped_column(String(80), default="")
     activo: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Se renueva al cambiar el PIN para cortar las sesiones viejas.
+    sesion_token: Mapped[str] = mapped_column(String(64), default=nuevo_token_de_sesion)
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     registros: Mapped[list[Registro]] = relationship(
@@ -60,6 +94,11 @@ class Meta(Base):
     fecha_limite: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Horas de trabajo previstas para cumplir la meta (0 = sin estimacion).
     horas_estimadas: Mapped[float] = mapped_column(Float, default=0.0)
+    # Objetivo medido en cantidad (0 = la meta no se mide por cantidad) y como
+    # se llama esa unidad: "tramites", "registros", "liquidaciones"... El jefe
+    # la escribe libre, no viene fija en el sistema.
+    objetivo: Mapped[float] = mapped_column(Float, default=0.0)
+    unidad: Mapped[str] = mapped_column(String(30), default="")
     estado: Mapped[str] = mapped_column(String(20), default="activa")
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
@@ -78,10 +117,19 @@ class Registro(Base):
     fecha: Mapped[date] = mapped_column(Date, default=date.today)
     descripcion: Mapped[str] = mapped_column(Text)
     horas: Mapped[float] = mapped_column(Float, default=0.0)
+    # Cuanto produjo, en la unidad que defina la meta (0 = no se informo).
+    cantidad: Mapped[float] = mapped_column(Float, default=0.0)
     estado: Mapped[str] = mapped_column(String(20), default="en_progreso")
     # Comentario del jefe sobre el reporte del dia.
     comentario: Mapped[str] = mapped_column(Text, default="")
     comentado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Revision del jefe: pendiente / aprobado / correccion_pendiente.
+    estado_revision: Mapped[str] = mapped_column(String(20), default="pendiente")
+    revisado_por: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id"), nullable=True
+    )
+    revisado_en: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    observacion_revision: Mapped[str] = mapped_column(Text, default="")
     creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     __table_args__ = (
@@ -89,6 +137,7 @@ class Registro(Base):
         # el historial de cada persona filtra por usuario y despues por fecha.
         Index("ix_registros_fecha", "fecha"),
         Index("ix_registros_usuario_fecha", "usuario_id", "fecha"),
+        Index("ix_registros_revision", "estado_revision"),
         # Un reporte por persona, dia y meta: corta los dobles clic y los
         # "Repetir" seguidos. (SQLite trata los NULL como distintos, asi que
         # los reportes "sin meta" los cubre la comprobacion de la aplicacion.)
@@ -99,6 +148,30 @@ class Registro(Base):
         back_populates="registros", foreign_keys=[usuario_id]
     )
     meta: Mapped[Meta | None] = relationship(back_populates="registros")
+    revisor: Mapped[Usuario | None] = relationship(foreign_keys=[revisado_por])
+
+
+class Novedad(Base):
+    """Un rango de dias que no se le exige reportar a alguien.
+
+    ``usuario_id`` en NULL es una novedad de todo el equipo (un feriado).
+    """
+
+    __tablename__ = "novedades"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    usuario_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id"), nullable=True
+    )
+    tipo: Mapped[str] = mapped_column(String(20), default="otro")
+    desde: Mapped[date] = mapped_column(Date)
+    hasta: Mapped[date] = mapped_column(Date)
+    detalle: Mapped[str] = mapped_column(String(140), default="")
+    creado_en: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+    __table_args__ = (Index("ix_novedades_rango", "desde", "hasta"),)
+
+    usuario: Mapped[Usuario | None] = relationship(foreign_keys=[usuario_id])
 
 
 class Auditoria(Base):
@@ -123,9 +196,14 @@ class Auditoria(Base):
 
 # Sin esto cada fila de un listado dispara su propia consulta para leer el
 # usuario o el responsable (1 consulta por fila al renderizar).
-OPCIONES_REGISTRO = (selectinload(Registro.usuario), selectinload(Registro.meta))
+OPCIONES_REGISTRO = (
+    selectinload(Registro.usuario),
+    selectinload(Registro.meta),
+    selectinload(Registro.revisor),
+)
 OPCIONES_META = (selectinload(Meta.asignado),)
 OPCIONES_AUDITORIA = (selectinload(Auditoria.usuario),)
+OPCIONES_NOVEDAD = (selectinload(Novedad.usuario),)
 
 # Acciones que quedan firmadas en la auditoria, con la etiqueta que se muestra
 # en la pagina /auditoria. Se guarda la clave corta en la base.
@@ -135,6 +213,10 @@ ACCIONES_AUDITORIA = [
     ("duplicar_meta", "Duplicó una meta"),
     ("archivar_meta", "Archivó una meta"),
     ("comentar_registro", "Comentó un reporte"),
+    ("crear_novedad", "Cargó una novedad"),
+    ("eliminar_novedad", "Borró una novedad"),
+    ("revisar_registro", "Revisó un reporte"),
+    ("corregir_registro", "Corrigió un reporte"),
     ("eliminar_registro", "Eliminó un reporte"),
     ("crear_usuario", "Creó un usuario"),
     ("cambiar_estado_usuario", "Activó/desactivó un usuario"),

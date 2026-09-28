@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block titulo %}Informes · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Informes por período</h1>
+<p class="sub">
+  Elegí un rango de fechas libre y, si querés, comparalo con el período anterior.
+</p>
+
+<section class="card">
+  <form method="get" action="/reportes" class="filtros">
+    <label>
+      Desde
+      <input type="date" name="desde" value="{{ desde.isoformat() }}">
+    </label>
+    <label>
+      Hasta
+      <input type="date" name="hasta" value="{{ hasta.isoformat() }}">
+    </label>
+    <label class="check">
+      <input type="checkbox" name="comparar" value="1" {% if comparar %}checked{% endif %}>
+      Comparar con el período anterior
+    </label>
+    <div class="filtros-botones">
+      <button type="submit" class="btn primary">Ver informe</button>
+      <a class="btn ghost" href="/reportes/rango.pdf?{{ qs_pdf }}">Descargar PDF</a>
+    </div>
+  </form>
+  <p class="muted small">
+    Sin fechas se muestra el mes en curso. El rango no puede pasar de
+    {{ max_dias // 365 }} años. El PDF se arma en el momento y no queda guardado
+    en el disco.
+  </p>
+</section>
+
+<section class="card">
+  <h2>{{ desde.strftime('%d/%m/%Y') }} al {{ hasta.strftime('%d/%m/%Y') }}</h2>
+  <div class="stats">
+    <div class="stat">
+      <span class="stat-num">{{ resumen.totales.reportes }}</span>
+      <span class="stat-label">reporte(s) cargados</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">{{ '%.1f'|format(resumen.totales.horas) }}</span>
+      <span class="stat-label">horas acumuladas</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">{{ '%.0f'|format(resumen.totales.cantidad) }}</span>
+      <span class="stat-label">cantidad informada</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">{{ resumen.totales.dias }}</span>
+      <span class="stat-label">día(s) con reportes</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">{{ resumen.laborables }}</span>
+      <span class="stat-label">día(s) laborables del período</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">{{ resumen.totales.completados }}</span>
+      <span class="stat-label">reporte(s) completados</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num">
+        {%- if resumen.totales.puntualidad is not none -%}
+          {{ resumen.totales.puntualidad }}%
+        {%- else -%}
+          —
+        {%- endif -%}
+      </span>
+      <span class="stat-label">cargado el mismo día</span>
+    </div>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Resumen por persona</h2>
+  <table class="tabla">
+    <thead>
+      <tr>
+        <th>Persona</th>
+        <th>Cargo</th>
+        <th>Reportes</th>
+        <th>Días</th>
+        <th>Horas</th>
+        <th>Cantidad</th>
+        <th>En fecha</th>
+        <th>Puntualidad</th>
+        <th>Completados</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for fila in resumen.por_persona %}
+      <tr>
+        <td>{{ fila.usuario.nombre }}</td>
+        <td>{{ fila.cargo }}</td>
+        <td>{{ fila.reportes }}</td>
+        <td>{{ fila.dias }}</td>
+        <td>{{ '%.1f'|format(fila.horas) }}</td>
+        <td>{{ '%.0f'|format(fila.cantidad) if fila.cantidad else '—' }}</td>
+        <td>{{ fila.en_fecha }}</td>
+        <td>
+          {%- if fila.reportes -%}
+            {{ fila.en_fecha * 100 // fila.reportes }}%
+          {%- else -%}
+            —
+          {%- endif -%}
+        </td>
+        <td>{{ fila.completados }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+{% if comparacion %}
+<section class="card">
+  <h2>Comparación con el período anterior</h2>
+  <p class="muted small">
+    El período anterior es el mismo rango de días inmediatamente antes:
+    del {{ comparacion.desde.strftime('%d/%m/%Y') }} al
+    {{ comparacion.hasta.strftime('%d/%m/%Y') }}.
+    <span class="delta sube">+</span> sube,
+    <span class="delta baja">-</span> baja, <span class="delta igual">=</span> igual.
+  </p>
+
+  <p>
+    <strong>Reportes:</strong> antes {{ comparacion.anterior.totales.reportes }}
+    / ahora {{ comparacion.actual.totales.reportes }}
+    <span class="delta {{ comparacion.reportes.sentido }}">{{ comparacion.reportes.texto }}</span>
+    · <strong>Horas:</strong> antes
+    {{ '%.1f'|format(comparacion.anterior.totales.horas) }} / ahora
+    {{ '%.1f'|format(comparacion.actual.totales.horas) }}
+    <span class="delta {{ comparacion.horas.sentido }}">{{ comparacion.horas.texto }}</span>
+    · <strong>Días con reportes:</strong> antes
+    {{ comparacion.anterior.totales.dias }} / ahora
+    {{ comparacion.actual.totales.dias }}
+    <span class="delta {{ comparacion.dias.sentido }}">{{ comparacion.dias.texto }}</span>
+    · <strong>Cargados en fecha:</strong> antes
+    {{ comparacion.anterior.totales.en_fecha }} / ahora
+    {{ comparacion.actual.totales.en_fecha }}
+    <span class="delta {{ comparacion.en_fecha.sentido }}">{{ comparacion.en_fecha.texto }}</span>
+  </p>
+
+  <table class="tabla">
+    <thead>
+      <tr>
+        <th>Persona</th>
+        <th>Reportes</th>
+        <th>Horas</th>
+        <th>Días</th>
+        <th>En fecha</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for fila in comparacion.filas %}
+      <tr>
+        <td>{{ fila.usuario.nombre }}</td>
+        <td>
+          {{ fila.reportes.actual }}
+          <span class="delta {{ fila.reportes.sentido }}">{{ fila.reportes.texto }}</span>
+          <div class="muted small">antes {{ fila.reportes.anterior }}</div>
+        </td>
+        <td>
+          {{ '%.1f'|format(fila.horas.actual) }}
+          <span class="delta {{ fila.horas.sentido }}">{{ fila.horas.texto }}</span>
+          <div class="muted small">antes {{ '%.1f'|format(fila.horas.anterior) }}</div>
+        </td>
+        <td>
+          {{ fila.dias.actual }}
+          <span class="delta {{ fila.dias.sentido }}">{{ fila.dias.texto }}</span>
+          <div class="muted small">antes {{ fila.dias.anterior }}</div>
+        </td>
+        <td>
+          {{ fila.en_fecha.actual }}
+          <span class="delta {{ fila.en_fecha.sentido }}">{{ fila.en_fecha.texto }}</span>
+          <div class="muted small">antes {{ fila.en_fecha.anterior }}</div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small">
+    Las comparaciones son de volumen de trabajo, no de desempeño individual: un
+    período con vacaciones o licencias explica la mayor parte de la diferencia.
+  </p>
+</section>
+{% endif %}
+
+<p class="muted small">
+  ¿Necesitás el mes cerrado con el detalle completo y las metas?
+  Está en <a href="/registros">Registros → Reporte mensual en PDF</a>.
+</p>
+
+{% endblock %}

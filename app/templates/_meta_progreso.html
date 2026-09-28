@@ -14,6 +14,17 @@
   </div>
 
   <div class="meta-datos">
+    {% if fila.meta.objetivo %}
+    <span>
+      <strong>{{ '%.0f'|format(fila.cantidad) }}</strong> de
+      {{ '%.0f'|format(fila.meta.objetivo) }} {{ fila.meta.unidad or 'unidades' }}
+    </span>
+    {% elif fila.cantidad %}
+    <span>
+      <strong>{{ '%.0f'|format(fila.cantidad) }}</strong>
+      {{ fila.meta.unidad or 'unidades' }}
+    </span>
+    {% endif %}
     <span><strong>{{ fila.reportes }}</strong> reporte(s)</span>
     <span>
       <strong>{{ '%.1f'|format(fila.horas) }}</strong> h

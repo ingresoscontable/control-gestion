@@ -136,6 +136,25 @@ td.comentario { min-width: 220px; }
   white-space: pre-wrap;
 }
 
+/* Revision del jefe sobre cada reporte */
+td.revision { min-width: 210px; }
+.badge.pendiente { background: #fef3c7; color: var(--amarillo); }
+.badge.aprobado { background: #dcfce7; color: var(--verde); }
+.badge.correccion_pendiente { background: #fee2e2; color: var(--rojo); }
+.observacion-revision {
+  background: #fef3c7;
+  border-left: 3px solid #f59e0b;
+  padding: 6px 9px;
+  border-radius: 4px;
+  font-size: 13px;
+  margin-top: 4px;
+  white-space: pre-wrap;
+}
+form.inline.revision { flex-wrap: wrap; }
+form.inline.revision select { padding: 5px 8px; font-size: 13px; }
+form.inline.revision input { width: 130px; }
+.alerta .vencidas-lista a { white-space: nowrap; }
+
 /* Tablas */
 .tabla { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tabla th, .tabla td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--borde); vertical-align: top; }
@@ -191,6 +210,15 @@ td.comentario { min-width: 220px; }
 .filtros label.ancho { flex: 1 1 260px; }
 .filtros label.ancho input { width: 100%; }
 .filtros-botones { display: flex; gap: 10px; flex-wrap: wrap; }
+/* Casilla dentro de la barra de filtros (comparar periodos, etc.) */
+.filtros label.check { flex-direction: row; align-items: center; gap: 8px; min-width: 0; padding-bottom: 9px; }
+.filtros label.check input { width: auto; }
+
+/* Deltas de la comparación entre períodos */
+.delta { font-weight: 700; }
+.delta.sube { color: var(--verde); }
+.delta.baja { color: var(--rojo); }
+.delta.igual { color: var(--muted); font-weight: 400; }
 
 /* Paginación de los listados largos */
 .paginacion { display: flex; gap: 12px; align-items: center; margin: 14px 0 4px; }
@@ -225,6 +253,43 @@ code { font-family: Consolas, "Courier New", monospace; }
 .login-card .sub { text-align: center; margin-bottom: 22px; }
 .login-card form { display: flex; flex-direction: column; gap: 14px; }
 .login-card .hint { font-size: 13px; color: var(--muted); text-align: center; margin: 18px 0 0; }
+
+/* Pie con los textos legales, en la entrada y en todas las páginas */
+.login-pie {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px solid var(--borde);
+  font-size: 12px;
+}
+.login-pie a { color: var(--muted); }
+.pie-legal { margin-top: 6px; }
+.pie-legal a { color: var(--muted); }
+
+/* ----------------------------------------------------------------------
+   Textos legales
+   ---------------------------------------------------------------------- */
+
+.legal { max-width: 900px; }
+.legal h1 { margin-bottom: 4px; }
+.legal h2 { font-size: 17px; margin: 24px 0 6px; }
+.legal h3 { font-size: 15px; margin: 18px 0 4px; }
+.legal p, .legal li { font-size: 14px; line-height: 1.6; }
+.legal ul { margin: 6px 0 6px 18px; }
+.legal pre { white-space: pre-wrap; font-size: 12.5px; margin: 0; }
+.legal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 10px 0 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--borde);
+  font-size: 13px;
+}
+.legal-nav a.activo { font-weight: 700; color: var(--azul); }
 
 /* ----------------------------------------------------------------------
    Progreso de metas

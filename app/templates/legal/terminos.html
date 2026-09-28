@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }} · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<article class="legal">
+  <h1>{{ titulo }}</h1>
+  <p class="muted small">
+    Versión {{ version_legal }} · Última actualización: {{ actualizado_legal }}
+  </p>
+
+  {% include "legal/_nav.html" %}
+
+  <p>
+    <strong>Resumen en una línea:</strong> es una herramienta interna,
+    gratuita y sin fines comerciales, para ordenar el control de gestión de un
+    área. Se entrega tal cual, sin garantías, y la responsabilidad por cómo se
+    usa y por los datos que contiene es de quien la instala y administra.
+  </p>
+
+  <h2>1. Objeto y alcance</h2>
+  <p>
+    Estos términos regulan el uso de <strong>{{ APP_NAME }}</strong>, una
+    aplicación de uso interno que corre en la red local de la institución y
+    sirve para registrar el trabajo diario, seguir metas y ordenar la revisión
+    del jefe sobre lo informado. No es un producto comercial, no se vende y no
+    se ofrece como servicio a terceros.
+  </p>
+
+  <h2>2. Naturaleza de la herramienta (lo que no es)</h2>
+  <p>Para que no queden dudas sobre su alcance:</p>
+  <ul>
+    <li><strong>No</strong> es un sistema de control de asistencia, de horarios, de presentismo ni de fichaje.</li>
+    <li><strong>No</strong> monitorea la actividad de la computadora: no captura pantallas, no registra teclas, no graba cámara ni micrófono.</li>
+    <li><strong>No</strong> lee correos, mensajes, archivos ni comunicaciones personales.</li>
+    <li><strong>No</strong> geolocaliza a nadie ni registra direcciones IP.</li>
+    <li><strong>No</strong> mide productividad en tiempo real ni envía alertas automáticas por desempeño.</li>
+    <li>
+      <strong>No</strong> pide ni calcula montos de ingresos, saldos, descuadres,
+      nombres de empresas que pagaron, números de cuenta ni datos bancarios.
+      No tiene campos para eso: solo fecha, meta, una descripción en texto
+      libre, horas y cantidad de trabajo.
+    </li>
+    <li>
+      Solo guarda <strong>lo que cada persona informa voluntariamente</strong>
+      sobre su trabajo (fecha, meta, descripción, horas y cantidad), más las
+      observaciones y la revisión del jefe.
+    </li>
+    <li>
+      <strong>No reemplaza</strong> los registros contables, legales o
+      documentales que la institución deba llevar por norma. La información de
+      este sistema es de apoyo a la gestión, no tiene valor probatorio propio.
+    </li>
+  </ul>
+
+  <h2>3. Uso aceptable</h2>
+  <ul>
+    <li>Usarlo solo para el fin previsto: el control de gestión del área.</li>
+    <li>No cargar datos de terceros, ni información sensible ajena al trabajo (salud, familia, datos bancarios, etc.).</li>
+    <li>
+      No escribir en la descripción montos, saldos ni descuadres, números de
+      cuenta o de comprobante, ni nombres de empresas o personas: el programa no
+      los pide y no debería guardarlos. Si hay que dejar constancia de un
+      bloqueo, alcanza con indicar el tipo de pendiente; el detalle numérico va
+      por el canal interno habitual.
+    </li>
+    <li>No usar el sistema para hostigar, estigmatizar o tomar represalias contra personas.</li>
+    <li>No intentar acceder a cuentas ajenas ni saltar los controles de acceso.</li>
+  </ul>
+
+  <h2>4. Responsabilidades de cada integrante</h2>
+  <ul>
+    <li>Informar de buena fe y con veracidad las horas y cantidades que carga.</li>
+    <li>Cuidar su PIN y no compartirlo; cerrar sesión al usar una PC compartida.</li>
+    <li>Avisar al jefe si sospecha que alguien usó su cuenta.</li>
+  </ul>
+
+  <h2>5. Responsabilidades de quien instala y administra</h2>
+  <ul>
+    <li>Informar al equipo que la herramienta se usa, para qué y qué datos guarda.</li>
+    <li>Obtener las conformidades o autorizaciones que exija la normativa aplicable.</li>
+    <li>Resguardar el equipo servidor y las copias de respaldo.</li>
+    <li>Mantener las versiones y los respaldos al día, y usar el sistema solo en la red interna.</li>
+    <li>Cumplir la normativa de protección de datos personales y laboral de su jurisdicción.</li>
+  </ul>
+
+  <h2>6. Disponibilidad y respaldos</h2>
+  <p>
+    El sistema se ofrece <strong>tal cual</strong> ("as is"), sin garantía de
+    disponibilidad, de funcionamiento ininterrumpido ni de ausencia de errores.
+    No hay garantía de que no se pierdan datos: por eso la aplicación genera
+    respaldos automáticos y el administrador debe conservarlos y verificar que
+    sirvan. Se recomienda hacer copias fuera del equipo servidor.
+  </p>
+
+  <h2>7. Límite de responsabilidad</h2>
+  <p>
+    En la medida en que la ley lo permita, las personas que escribieron y
+    mantienen este programa no responden por daños directos ni indirectos,
+    lucro cesante, pérdida de datos, interrupciones ni por el uso que la
+    institución haga de la herramienta.
+    <strong>La responsabilidad por el tratamiento de los datos y por las
+    decisiones de gestión que se tomen con ellos es de la institución que la
+    instala y de quien la administra</strong>, no de los autores del programa.
+  </p>
+
+  <h2>8. Propiedad y licencia</h2>
+  <p>
+    El programa se distribuye bajo la <a href="/legal/licencia">licencia
+    MIT</a>: es libre y gratuito, se puede copiar, usar, modificar y compartir
+    —incluso en otras divisiones u organismos— conservando el aviso de autor.
+    Los datos cargados en el sistema pertenecen a la institución.
+  </p>
+
+  <h2>9. Cambios</h2>
+  <p>
+    Estos términos y las políticas asociadas pueden cambiar si cambia el
+    programa. La versión vigente es siempre la publicada en estas páginas, con
+    su fecha de actualización.
+  </p>
+
+  <h2>10. Aviso sobre la normativa aplicable (Venezuela)</h2>
+  <p>
+    Este texto es un <strong>modelo genérico orientativo</strong> y no
+    constituye asesoramiento legal. En Venezuela no hay, a la fecha de esta
+    versión, una ley especial de protección de datos personales vigente; el
+    marco aplicable es el artículo 60 de la Constitución (privacidad, intimidad
+    y habeas data), la Ley sobre Protección a la Privacidad de las
+    Comunicaciones, la Ley Especial contra los Delitos Informáticos y, para las
+    entidades del Poder Público, la Ley de Infogobierno, además de la normativa
+    laboral aplicable.
+  </p>
+  <p>
+    Antes de usarlo en producción, quien administra la instalación debe
+    revisarlo con la asesoría jurídica o de personal del organismo, e informar
+    al equipo sobre el uso del sistema.
+  </p>
+</article>
+
+{% endblock %}

@@ -68,10 +68,15 @@ La barra de progreso de cada meta se llena así:
 
 ---
 
-## 5. Las tres cosas que te van a aparecer
+## 5. Las cosas que te van a aparecer
 
 - **Comentario del jefe** — un recuadro amarillo debajo de alguno de tus
   reportes, con una observación. Es solo para leer, no se edita.
+- **Reporte devuelto para corregir** — un cartel rojo arriba del panel cuando el
+  jefe revisó un reporte tuyo y pidió cambios. Trae el enlace **Corregir**:
+  ajustá la descripción, las horas y el estado, guardá, y el reporte vuelve solo
+  a la bandeja del jefe. La fecha no se cambia; si estaba mal, borrá el reporte y
+  cargá uno nuevo con la fecha correcta.
 - **Aviso de plazo vencido** — un cartel rojo arriba del panel cuando alguna de
   tus metas pasó la fecha límite. No es una sanción, es para que lo tengas
   presente.
@@ -88,6 +93,7 @@ La barra de progreso de cada meta se llena así:
 | La página no abre | Revisa que estés en la red de la oficina y que la PC del servidor esté encendida con su ventana abierta. |
 | Olvidaste el PIN | Pídele al jefe que te lo reinicie desde *Equipo*. Tarda un minuto. |
 | Te equivocaste en un reporte | Bórralo con *Eliminar* y vuelve a cargarlo. |
+| El jefe te devolvió un reporte | Entrá al enlace *Corregir* del aviso rojo, arreglalo y guardá: vuelve solo a revisión. |
 | Te sale *"Ya hay un registro de ese día para esa meta"* | Ese día ya tenés uno cargado: borrá el anterior o guardá el nuevo con otra fecha. |
 | No te deja poner la fecha | Sólo se carga desde hace 30 días hasta hoy. Si es más viejo que eso, preguntale al jefe. |
 | Quieres cambiar tu PIN | Enlace *Guía* o *Ayuda* → **Cambiar mi PIN**. |
@@ -99,3 +105,55 @@ La barra de progreso de cada meta se llena así:
 - No cierres la ventana negra de la PC del servidor (eso es del jefe).
 - No compartas tu PIN.
 - No hace falta internet: todo funciona dentro de la red de la oficina.
+
+---
+
+## 8. Qué guarda el sistema y qué no
+
+Como esta herramienta registra trabajo tuyo, corresponde que sepas exactamente
+qué se guarda. Lo tenés por escrito, en detalle, en el sistema: al pie de la
+pantalla de entrada (y de todas las páginas) están los enlaces a la **Política
+de Privacidad**, la **Política de Cookies**, los **Términos y condiciones** y la
+**Licencia**.
+
+**Sí se guarda:**
+
+- Tu nombre, tu usuario, tu cargo y tu PIN (guardado cifrado; nadie puede
+  leerlo, ni el jefe).
+- Lo que vos informás de tu trabajo: fecha, meta, descripción, horas, cantidad y
+  estado.
+- Las observaciones y la revisión del jefe sobre esos reportes.
+- Las novedades del área (vacaciones, licencias, feriados).
+- Quién cambió o borró algo, y cuándo (para tener trazabilidad).
+
+**No se guarda nada de esto:** documento, domicilio, teléfono, correo, datos
+bancarios, datos de salud, familia, fotos, capturas de pantalla, teclas
+presionadas, ubicación, páginas que visitás ni direcciones IP.
+
+**Y, muy importante:** el sistema **no pide ni calcula montos de ingresos,
+saldos, descuadres, números de cuenta o de comprobante, ni nombres de empresas
+que pagaron**. No hay campos para eso.
+
+### El único cuidado: qué escribís en la descripción
+
+El único campo libre es el de la descripción (*"Qué hiciste"*), y ahí el sistema
+guarda el texto tal cual lo escribas. Por eso:
+
+- **Bien:** *"Concilié las cuentas por cobrar de septiembre, quedó una cuenta
+  pendiente por diferencia de saldo"*.
+- **Evitalo:** *"descuadre de Bs. 12.400 en la cuenta 0102-2141 de la empresa
+  XYZ"*.
+
+Ni los montos ni los números de cuenta ni los nombres de las empresas hacen
+falta para el control de gestión, y no es lugar para dejarlos por escrito. Si
+necesitás dejar constancia del detalle numérico, usá el canal interno habitual de
+la oficina (correo, carpeta compartida, expediente).
+
+El sistema **no es un control de asistencia** ni de horarios: no mide a qué hora
+entraste ni cuánto tiempo estuviste frente a la PC. Solo guarda lo que vos
+cargás. Y **no sale a internet**: todo queda en la PC del servidor, dentro de la
+red de la oficina.
+
+> Tené en cuenta que el panel muestra un **resumen semanal del equipo** (reportes,
+> horas y cumplimiento de cada integrante), visible para todos. No es un dato
+> privado tuyo: es el tablero de trabajo del área.

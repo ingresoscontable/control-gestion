@@ -1,0 +1,5 @@
+<nav class="legal-nav">
+  {% for clave, nombre in documentos %}
+  <a href="/legal/{{ clave }}" class="{% if clave == documento %}activo{% endif %}">{{ nombre }}</a>
+  {% endfor %}
+</nav>

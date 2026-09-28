@@ -17,7 +17,9 @@
         <a href="/metas">Metas</a>
         <a href="/metas/progreso">Progreso</a>
         <a href="/registros">Registros</a>
+        <a href="/reportes">Informes</a>
         <a href="/calendario">Calendario</a>
+        <a href="/novedades">Novedades</a>
         <a href="/equipo">Equipo</a>
         <a href="/respaldos">Respaldos</a>
         <a href="/auditoria">Auditoría</a>
@@ -40,6 +42,11 @@
 
   <footer class="pie">
     Sistema interno · uso en red local · {{ hoy.strftime('%d/%m/%Y') }}
+    <div class="pie-legal">
+      {% for clave, nombre in documentos %}
+      <a href="/legal/{{ clave }}">{{ nombre }}</a>{% if not loop.last %} · {% endif %}
+      {% endfor %}
+    </div>
   </footer>
 </body>
 </html>

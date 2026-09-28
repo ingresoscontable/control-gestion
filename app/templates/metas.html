@@ -7,6 +7,12 @@
   Define qué debe lograr cada persona. El equipo solo puede verlas y reportar avances.
   <a href="/metas/progreso">Ver el progreso de las metas</a>.
 </p>
+<p class="muted small">
+  El avance de una meta se calcula, en este orden: si tiene <strong>objetivo en
+  cantidad</strong>, por la cantidad acumulada; si no, por las <strong>horas</strong>
+  contra las estimadas; si no, por la proporción de reportes marcados como
+  completados.
+</p>
 
 <section class="card">
   <h2>Nueva meta</h2>
@@ -39,6 +45,15 @@
     <label>
       Horas estimadas (opcional)
       <input type="number" name="horas_estimadas" value="0" min="0" step="1">
+    </label>
+    <label>
+      Objetivo en cantidad (opcional)
+      <input type="number" name="objetivo" value="0" min="0" step="1">
+    </label>
+    <label>
+      Unidad de esa cantidad (opcional)
+      <input type="text" name="unidad" maxlength="30"
+             placeholder="Ej: trámites, registros, liquidaciones">
     </label>
     <div class="full">
       <button type="submit" class="btn primary">Crear meta</button>
@@ -74,6 +89,14 @@
           </div>
           <span class="avance-num {{ p.nivel if p else 'baja' }}">{{ p.avance if p else 0 }}%</span>
           <div class="muted small">{{ p.reportes if p else 0 }} reporte(s)</div>
+          {% if m.objetivo %}
+          <div class="muted small">
+            {{ '%.0f'|format(p.cantidad if p else 0) }} de {{ '%.0f'|format(m.objetivo) }}
+            {{ m.unidad or 'unidades' }}
+          </div>
+          {% elif m.unidad %}
+          <div class="muted small">en {{ m.unidad }}</div>
+          {% endif %}
         </td>
         <td>
           <span class="badge {{ 'completado' if m.estado == 'cerrada' else ('bloqueado' if m.estado == 'eliminada' else 'en_progreso') }}">

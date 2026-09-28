@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import calendar
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fpdf import FPDF
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
+from .jornada import dias_laborables
+from .metricas import expresion_en_fecha
 from .models import (
     ESTADO_ELIMINADA,
     OPCIONES_META,
@@ -129,11 +131,12 @@ def _tabla(pdf: FPDF, encabezados: list[str], anchos: list[float], filas: list[l
         pdf.set_text_color(*NEGRO)
 
 
-def _datos_del_mes(db: Session, primer_dia: date, ultimo_dia: date):
+def _datos_del_rango(db: Session, desde: date, hasta: date):
+    """Los tres conjuntos que necesitan los informes, ya cargados."""
     registros = list(
         db.scalars(
             select(Registro)
-            .where(Registro.fecha >= primer_dia, Registro.fecha <= ultimo_dia)
+            .where(Registro.fecha >= desde, Registro.fecha <= hasta)
             .options(*OPCIONES_REGISTRO)
             .order_by(Registro.fecha, Registro.id)
         )
@@ -152,20 +155,240 @@ def _datos_del_mes(db: Session, primer_dia: date, ultimo_dia: date):
     return registros, personas, metas
 
 
-def generar_pdf_mensual(db: Session, anio: int, mes: int) -> bytes:
-    """Devuelve el PDF del mes pedido como bytes, listo para descargar."""
-    primer_dia = date(anio, mes, 1)
-    ultimo_dia = date(anio, mes, calendar.monthrange(anio, mes)[1])
+def resumen_periodo(db: Session, desde: date, hasta: date) -> dict:
+    """Totales del rango y detalle por persona, para la pantalla y el PDF.
 
-    registros, personas, metas = _datos_del_mes(db, primer_dia, ultimo_dia)
+    El informe mensual es un rango mas (del dia 1 al ultimo del mes), asi que
+    los dos salen de esta misma funcion y no hay cuentas duplicadas.
+    """
+    en_fecha = expresion_en_fecha()
+    completados = case((Registro.estado == "completado", 1), else_=0)
 
-    pdf = ReportePDF(f"Reporte mensual - {MESES[mes - 1].capitalize()} {anio}")
+    por_persona = {
+        fila[0]: fila
+        for fila in db.execute(
+            select(
+                Registro.usuario_id,
+                func.count(Registro.id),
+                func.coalesce(func.sum(Registro.horas), 0.0),
+                func.coalesce(func.sum(Registro.cantidad), 0.0),
+                func.count(func.distinct(Registro.fecha)),
+                func.coalesce(func.sum(completados), 0),
+                func.coalesce(func.sum(case((en_fecha, 1), else_=0)), 0),
+            )
+            .where(Registro.fecha >= desde, Registro.fecha <= hasta)
+            .group_by(Registro.usuario_id)
+        ).all()
+    }
+
+    totales = db.execute(
+        select(
+            func.count(Registro.id),
+            func.coalesce(func.sum(Registro.horas), 0.0),
+            func.coalesce(func.sum(Registro.cantidad), 0.0),
+            func.count(func.distinct(Registro.fecha)),
+            func.coalesce(func.sum(completados), 0),
+            func.coalesce(func.sum(case((en_fecha, 1), else_=0)), 0),
+        ).where(Registro.fecha >= desde, Registro.fecha <= hasta)
+    ).one()
+
+    filas = []
+    for persona in db.scalars(select(Usuario).order_by(Usuario.nombre)):
+        datos = por_persona.get(persona.id)
+        filas.append(
+            {
+                "usuario": persona,
+                "cargo": persona.cargo or ("Jefe" if persona.es_jefe else "Empleado"),
+                "reportes": int(datos[1]) if datos else 0,
+                "horas": float(datos[2]) if datos else 0.0,
+                "cantidad": float(datos[3]) if datos else 0.0,
+                "dias": int(datos[4]) if datos else 0,
+                "completados": int(datos[5]) if datos else 0,
+                "en_fecha": int(datos[6]) if datos else 0,
+            }
+        )
+
+    reportes = int(totales[0] or 0)
+    en_fecha_total = int(totales[5] or 0)
+    return {
+        "desde": desde,
+        "hasta": hasta,
+        "laborables": dias_laborables(desde, hasta),
+        "totales": {
+            "reportes": reportes,
+            "horas": float(totales[1] or 0.0),
+            "cantidad": float(totales[2] or 0.0),
+            "dias": int(totales[3] or 0),
+            "completados": int(totales[4] or 0),
+            "en_fecha": en_fecha_total,
+            "puntualidad": (
+                round(en_fecha_total / reportes * 100) if reportes else None
+            ),
+        },
+        "por_persona": filas,
+    }
+
+
+def periodo_anterior(desde: date, hasta: date) -> tuple[date, date]:
+    """Periodo inmediatamente anterior, de la misma cantidad de dias."""
+    largo = (hasta - desde).days + 1
+    return desde - timedelta(days=largo), desde - timedelta(days=1)
+
+
+def _comparar_cifra(actual: float, anterior: float, decimales: int = 0) -> dict:
+    """Valor del periodo, del anterior y la diferencia ya resuelta.
+
+    La pantalla y el PDF solo tienen que mostrar `texto` con el color de
+    `sentido`: las cuentas no se repiten en cada lugar.
+    """
+    diferencia = actual - anterior
+    if diferencia > 0:
+        sentido = "sube"
+    elif diferencia < 0:
+        sentido = "baja"
+    else:
+        sentido = "igual"
+    return {
+        "actual": actual,
+        "anterior": anterior,
+        "sentido": sentido,
+        "texto": f"{diferencia:+.{decimales}f}" if diferencia else "=",
+    }
+
+
+def comparativa(db: Session, desde: date, hasta: date) -> dict:
+    """Compara el rango con el periodo anterior de igual duracion."""
+    desde_anterior, hasta_anterior = periodo_anterior(desde, hasta)
+    actual = resumen_periodo(db, desde, hasta)
+    anterior = resumen_periodo(db, desde_anterior, hasta_anterior)
+    previo = {fila["usuario"].id: fila for fila in anterior["por_persona"]}
+
+    filas = []
+    for fila in actual["por_persona"]:
+        antes = previo.get(fila["usuario"].id, {})
+        filas.append(
+            {
+                "usuario": fila["usuario"],
+                "reportes": _comparar_cifra(fila["reportes"], antes.get("reportes", 0)),
+                "horas": _comparar_cifra(
+                    fila["horas"], antes.get("horas", 0.0), decimales=1
+                ),
+                "dias": _comparar_cifra(fila["dias"], antes.get("dias", 0)),
+                "en_fecha": _comparar_cifra(
+                    fila["en_fecha"], antes.get("en_fecha", 0)
+                ),
+            }
+        )
+
+    totales_actual = actual["totales"]
+    totales_anterior = anterior["totales"]
+    return {
+        "desde": desde_anterior,
+        "hasta": hasta_anterior,
+        "actual": actual,
+        "anterior": anterior,
+        "filas": filas,
+        "reportes": _comparar_cifra(
+            totales_actual["reportes"], totales_anterior["reportes"]
+        ),
+        "horas": _comparar_cifra(
+            totales_actual["horas"], totales_anterior["horas"], decimales=1
+        ),
+        "dias": _comparar_cifra(totales_actual["dias"], totales_anterior["dias"]),
+        "en_fecha": _comparar_cifra(
+            totales_actual["en_fecha"], totales_anterior["en_fecha"]
+        ),
+    }
+
+
+def _delta_celda(dato: dict):
+    """Celda de la comparacion: el texto de la diferencia y su color."""
+    colores = {"sube": VERDE, "baja": AMBAR}
+    return (dato["texto"], colores.get(dato["sentido"]))
+
+
+def _comparacion_pdf(pdf: FPDF, comparacion: dict, totales: dict) -> None:
+    """Seccion de comparacion contra el periodo anterior."""
+    _titulo_seccion(pdf, "Comparacion con el periodo anterior")
+    pdf.set_font("Helvetica", "", 10)
+    antes = comparacion["anterior"]["totales"]
+    lineas = [
+        f"Periodo anterior: {comparacion['desde'].strftime('%d/%m/%Y')} al "
+        f"{comparacion['hasta'].strftime('%d/%m/%Y')}",
+        f"Reportes: antes {antes['reportes']} / ahora {totales['reportes']}   |   "
+        f"Horas: antes {antes['horas']:.1f} / ahora {totales['horas']:.1f}",
+        f"Dias con reportes: antes {antes['dias']} / ahora {totales['dias']}   |   "
+        f"Cargados en fecha: antes {antes['en_fecha']} / ahora {totales['en_fecha']}",
+        f"Cantidad informada: antes {antes['cantidad']:.0f} / "
+        f"ahora {totales['cantidad']:.0f}",
+    ]
+    for linea in lineas:
+        pdf.cell(0, 6, _limpiar(linea))
+        pdf.ln(6)
+    pdf.ln(1)
+
+    filas = [
+        [
+            fila["usuario"].nombre,
+            fila["reportes"]["actual"],
+            _delta_celda(fila["reportes"]),
+            f"{fila['horas']['actual']:.1f}",
+            _delta_celda(fila["horas"]),
+            fila["dias"]["actual"],
+            _delta_celda(fila["dias"]),
+            fila["en_fecha"]["actual"],
+            _delta_celda(fila["en_fecha"]),
+        ]
+        for fila in comparacion["filas"]
+    ]
+    _tabla(
+        pdf,
+        [
+            "Persona",
+            "Rep.",
+            "Delta",
+            "Horas",
+            "Delta",
+            "Dias",
+            "Delta",
+            "En fecha",
+            "Delta",
+        ],
+        [40, 20, 16, 22, 16, 16, 16, 20, 14],
+        filas,
+    )
+
+
+def generar_pdf_rango(
+    db: Session,
+    desde: date,
+    hasta: date,
+    comparar: bool = False,
+    titulo: str = "",
+) -> bytes:
+    """PDF de un rango de fechas cualquiera, listo para descargar.
+
+    El informe mensual es un caso particular (del dia 1 al ultimo del mes), asi
+    que los dos salen de aca y no hay dos reportes que mantener en paralelo.
+    """
+    registros, personas, metas = _datos_del_rango(db, desde, hasta)
+
+    comparacion = None
+    if comparar:
+        comparacion = comparativa(db, desde, hasta)
+        resumen = comparacion["actual"]
+    else:
+        resumen = resumen_periodo(db, desde, hasta)
+    totales = resumen["totales"]
+
+    pdf = ReportePDF(titulo or f"Reporte del {desde:%d/%m/%Y} al {hasta:%d/%m/%Y}")
     pdf.add_page()
 
     # ---- Resumen general -------------------------------------------------
-    total_horas = sum(r.horas for r in registros)
-    dias_con_datos = len({r.fecha for r in registros})
     metas_activas = [m for m in metas if m.estado == "activa"]
+    puntualidad_txt = (
+        f"{totales['puntualidad']}%" if totales["puntualidad"] is not None else "-"
+    )
 
     avance_por_meta = {fila["meta"].id: fila for fila in progreso_metas(db, metas)}
     avances_activas = [
@@ -182,57 +405,65 @@ def generar_pdf_mensual(db: Session, anio: int, mes: int) -> bytes:
 
     _titulo_seccion(pdf, "Resumen general")
     pdf.set_font("Helvetica", "", 10)
-    resumen = [
-        f"Periodo: {primer_dia.strftime('%d/%m/%Y')} al {ultimo_dia.strftime('%d/%m/%Y')}",
-        f"Reportes cargados: {len(registros)}   |   Horas acumuladas: {total_horas:.1f}",
+    resumen_general = [
+        f"Periodo: {desde.strftime('%d/%m/%Y')} al {hasta.strftime('%d/%m/%Y')}",
+        f"Reportes cargados: {totales['reportes']}   |   "
+        f"Horas acumuladas: {totales['horas']:.1f}   |   "
+        f"Cantidad informada: {totales['cantidad']:.0f}",
         f"Personas activas: {sum(1 for p in personas if p.activo)}   |   "
-        f"Dias con reportes: {dias_con_datos}   |   Metas activas: {len(metas_activas)}",
+        f"Dias con reportes: {totales['dias']}   |   "
+        f"Dias laborables del periodo: {resumen['laborables']}",
+        f"Cargados el mismo dia del trabajo: {totales['en_fecha']} de "
+        f"{totales['reportes']} ({puntualidad_txt})",
+        f"Metas activas: {len(metas_activas)}   |   "
         f"Avance promedio de metas activas: {avance_promedio}%   |   "
         f"Metas con plazo vencido: {len(vencidas)}",
     ]
-    for linea in resumen:
+    for linea in resumen_general:
         pdf.cell(0, 6, _limpiar(linea))
         pdf.ln(6)
 
     # ---- Por persona -----------------------------------------------------
-    por_persona: dict[int, dict] = {}
-    for r in registros:
-        fila = por_persona.setdefault(
-            r.usuario_id, {"reportes": 0, "horas": 0.0, "dias": set(), "completados": 0}
-        )
-        fila["reportes"] += 1
-        fila["horas"] += r.horas
-        fila["dias"].add(r.fecha)
-        if r.estado == "completado":
-            fila["completados"] += 1
-
-    filas_personas = []
-    for persona in personas:
-        datos = por_persona.get(persona.id)
-        filas_personas.append(
-            [
-                persona.nombre,
-                persona.cargo or ("Jefe" if persona.es_jefe else "Empleado"),
-                datos["reportes"] if datos else 0,
-                len(datos["dias"]) if datos else 0,
-                f"{datos['horas']:.1f}" if datos else "0.0",
-                datos["completados"] if datos else 0,
-            ]
-        )
+    filas_personas = [
+        [
+            fila["usuario"].nombre,
+            fila["cargo"],
+            fila["reportes"],
+            fila["dias"],
+            f"{fila['horas']:.1f}",
+            fila["en_fecha"],
+            f"{fila['cantidad']:.0f}" if fila["cantidad"] else "-",
+            fila["completados"],
+        ]
+        for fila in resumen["por_persona"]
+    ]
 
     _titulo_seccion(pdf, "Resumen por persona")
     _tabla(
         pdf,
-        ["Persona", "Cargo", "Reportes", "Dias", "Horas", "Completados"],
-        [50, 42, 22, 16, 20, 30],
+        [
+            "Persona",
+            "Cargo",
+            "Reportes",
+            "Dias",
+            "Horas",
+            "En fecha",
+            "Cant.",
+            "Completados",
+        ],
+        [40, 32, 20, 14, 18, 18, 14, 24],
         filas_personas,
     )
 
+    # ---- Comparacion con el periodo anterior -----------------------------
+    if comparacion is not None:
+        _comparacion_pdf(pdf, comparacion, totales)
+
     # ---- Metas -----------------------------------------------------------
-    conteo_mes: dict[int, int] = dict(
+    conteo_periodo: dict[int, int] = dict(
         db.execute(
             select(Registro.meta_id, func.count(Registro.id))
-            .where(Registro.fecha >= primer_dia, Registro.fecha <= ultimo_dia)
+            .where(Registro.fecha >= desde, Registro.fecha <= hasta)
             .group_by(Registro.meta_id)
         ).all()
     )
@@ -258,7 +489,7 @@ def generar_pdf_mensual(db: Session, anio: int, mes: int) -> bytes:
                 meta.asignado.nombre if meta.asignado else "Todo el equipo",
                 meta.fecha_limite.strftime("%d/%m/%Y") if meta.fecha_limite else "-",
                 (f"{avance}%", color_avance(avance)),
-                conteo_mes.get(meta.id, 0),
+                conteo_periodo.get(meta.id, 0),
                 conteo_total.get(meta.id, 0),
                 meta.estado,
             ]
@@ -267,7 +498,15 @@ def generar_pdf_mensual(db: Session, anio: int, mes: int) -> bytes:
     _titulo_seccion(pdf, "Metas del periodo")
     _tabla(
         pdf,
-        ["Meta", "Asignada a", "Plazo", "Avance", "Avances mes", "Total", "Estado"],
+        [
+            "Meta",
+            "Asignada a",
+            "Plazo",
+            "Avance",
+            "Avances periodo",
+            "Total",
+            "Estado",
+        ],
         [50, 32, 20, 18, 20, 14, 26],
         filas_metas,
     )
@@ -281,6 +520,7 @@ def generar_pdf_mensual(db: Session, anio: int, mes: int) -> bytes:
             r.meta.titulo if r.meta else "-",
             r.descripcion,
             f"{r.horas:.1f}",
+            f"{r.cantidad:.0f}" if r.cantidad else "-",
             r.estado.replace("_", " "),
         ]
         for r in detalle
@@ -289,8 +529,8 @@ def generar_pdf_mensual(db: Session, anio: int, mes: int) -> bytes:
     _titulo_seccion(pdf, "Detalle de reportes diarios")
     _tabla(
         pdf,
-        ["Fecha", "Persona", "Meta", "Que hizo", "Horas", "Estado"],
-        [16, 34, 32, 62, 14, 22],
+        ["Fecha", "Persona", "Meta", "Que hizo", "Horas", "Cant.", "Estado"],
+        [16, 32, 30, 48, 14, 12, 28],
         filas_detalle,
     )
     if len(registros) > MAX_DETALLE:
@@ -311,6 +551,14 @@ def generar_pdf_mensual(db: Session, anio: int, mes: int) -> bytes:
     return bytes(pdf.output())
 
 
+def generar_pdf_mensual(db: Session, anio: int, mes: int) -> bytes:
+    """Devuelve el PDF del mes pedido como bytes, listo para descargar."""
+    primer_dia = date(anio, mes, 1)
+    ultimo_dia = date(anio, mes, calendar.monthrange(anio, mes)[1])
+    titulo = f"Reporte mensual - {MESES[mes - 1].capitalize()} {anio}"
+    return generar_pdf_rango(db, primer_dia, ultimo_dia, titulo=titulo)
+
+
 def generar_pdf_persona(db: Session, persona: Usuario, anio: int, mes: int) -> bytes:
     """PDF mensual de una sola persona: lo que cargo en el mes y sus metas.
 
@@ -320,7 +568,7 @@ def generar_pdf_persona(db: Session, persona: Usuario, anio: int, mes: int) -> b
     primer_dia = date(anio, mes, 1)
     ultimo_dia = date(anio, mes, calendar.monthrange(anio, mes)[1])
 
-    registros, _personas, metas = _datos_del_mes(db, primer_dia, ultimo_dia)
+    registros, _personas, metas = _datos_del_rango(db, primer_dia, ultimo_dia)
     registros = [r for r in registros if r.usuario_id == persona.id]
 
     pdf = ReportePDF(f"{persona.nombre} - {MESES[mes - 1].capitalize()} {anio}")
@@ -329,6 +577,11 @@ def generar_pdf_persona(db: Session, persona: Usuario, anio: int, mes: int) -> b
     horas = sum(r.horas for r in registros)
     dias_con_datos = len({r.fecha for r in registros})
     completados = sum(1 for r in registros if r.estado == "completado")
+    en_fecha = sum(
+        1 for r in registros if r.creado_en and r.creado_en.date() == r.fecha
+    )
+    cantidad = sum(r.cantidad for r in registros)
+    porcentaje_en_fecha = round(en_fecha / len(registros) * 100) if registros else 0
 
     _titulo_seccion(pdf, "Resumen del mes")
     pdf.set_font("Helvetica", "", 10)
@@ -337,6 +590,9 @@ def generar_pdf_persona(db: Session, persona: Usuario, anio: int, mes: int) -> b
         f"Periodo: {primer_dia.strftime('%d/%m/%Y')} al {ultimo_dia.strftime('%d/%m/%Y')}",
         f"Reportes cargados: {len(registros)}   |   Dias con reportes: {dias_con_datos}",
         f"Horas acumuladas: {horas:.1f}   |   Reportes completados: {completados}",
+        f"Cargados el mismo dia del trabajo: {en_fecha} de {len(registros)} "
+        f"({porcentaje_en_fecha}%)",
+        f"Cantidad informada en el periodo: {cantidad:.0f}",
     ]
     for linea in resumen:
         pdf.cell(0, 6, _limpiar(linea))
@@ -382,6 +638,7 @@ def generar_pdf_persona(db: Session, persona: Usuario, anio: int, mes: int) -> b
             r.meta.titulo if r.meta else "-",
             r.descripcion,
             f"{r.horas:.1f}",
+            f"{r.cantidad:.0f}" if r.cantidad else "-",
             r.estado.replace("_", " "),
         ]
         for r in registros[:MAX_DETALLE]
@@ -390,8 +647,8 @@ def generar_pdf_persona(db: Session, persona: Usuario, anio: int, mes: int) -> b
     _titulo_seccion(pdf, "Detalle de reportes diarios")
     _tabla(
         pdf,
-        ["Fecha", "Meta", "Que hizo", "Horas", "Estado"],
-        [24, 38, 74, 14, 30],
+        ["Fecha", "Meta", "Que hizo", "Horas", "Cant.", "Estado"],
+        [22, 36, 60, 14, 12, 36],
         filas_detalle,
     )
     if len(registros) > MAX_DETALLE:

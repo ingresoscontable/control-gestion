@@ -26,6 +26,12 @@
     </form>
 
     <p class="hint">¿Olvidaste tu PIN? Pídele al jefe que lo reinicie desde <strong>Equipo</strong>.</p>
+
+    <footer class="login-pie">
+      {% for clave, nombre in documentos %}
+      <a href="/legal/{{ clave }}">{{ nombre }}</a>
+      {% endfor %}
+    </footer>
   </div>
 </body>
 </html>

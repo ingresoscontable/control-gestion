@@ -87,7 +87,10 @@ borra solo** en cuanto el jefe cambia su PIN.
 
 - *Equipo* → crear un acceso por persona (analista contable, liquidadora, etc.).
 - *Metas* → crear la meta, asignarla a una persona o a todo el equipo, ponerle
-  fecha límite y (opcional) **horas estimadas** de trabajo. Cualquier meta se
+  fecha límite y, opcionalmente, **horas estimadas** de trabajo o un **objetivo
+  en cantidad con su unidad** (por ejemplo 40 liquidaciones, 120 trámites). El
+  avance de la meta se calcula con lo que la meta tenga: **cantidad → horas →
+  reportes completados**; la página lo explica según el caso. Cualquier meta se
   puede **editar después** (título, responsable, plazo, horas estimadas y
   estado) desde el botón *Editar*, sin perder los reportes ya cargados.
   El botón *Duplicar* hace una **copia de la meta** (título, responsable, plazo
@@ -100,20 +103,31 @@ borra solo** en cuanto el jefe cambia su PIN.
 - *Progreso* → vista con barra de avance por meta, más el promedio y las horas
   acumuladas del equipo.
 - *Panel* → ver quién ya registró hoy y quién falta; ver el avance de cada meta
-  y el **resumen de la semana** por persona (registros, días reportados y horas).
+  y el **resumen de la semana** por persona (registros, días reportados, horas y
+  **puntualidad**: qué parte se cargó el mismo día en que se hizo el trabajo).
   Arriba aparece un **aviso en rojo cuando una meta activa pasó su fecha
   límite**, con los días de atraso (al equipo le muestra solo las suyas).
   Cierra el panel con un **gráfico de horas de las últimas 8 semanas**, una barra
   por persona y por semana.
-- *Registros* → historial completo **paginado de 50 en 50**, con filtros por
-  **meta**, persona, rango de fechas, **estado** del reporte y **texto libre
-  dentro de la descripción**. Los filtros se recuerdan al pasar de página y al
-  exportar. El botón **Exportar a Excel** baja a `.xlsx` exactamente lo que está
-  filtrado (todos, no la página), y hay **reporte mensual en PDF** con resumen
-  general, resumen por persona, metas del periodo y detalle de los reportes
-  diarios.
+- *Registros* → historial completo **paginado de 50 en 50** (con el % cargado el
+  mismo día del trabajo), con filtros por
+  **meta**, persona, rango de fechas, **estado** del reporte, **texto libre
+  dentro de la descripción** y **estado de revisión**. Los filtros se recuerdan al
+  pasar de página y al exportar. El botón **Exportar a Excel** baja a `.xlsx`
+  exactamente lo que está filtrado (todos, no la página), y hay **reporte mensual
+  en PDF** con resumen general, resumen por persona, metas del periodo y detalle
+  de los reportes diarios. Cada fila trae los botones para **Aprobar** o
+  **Devolver** el reporte (ver [Revisión del trabajo](#revisión-del-trabajo-jefe--empleado)).
 - *Calendario* → el mes en curso dibujado día por día: quién cargó, con cuántas
   horas y quién no reportó. Flechas para pasar al mes anterior o siguiente.
+- *Novedades* → cargar vacaciones, licencias o feriados, de una persona o de
+  todo el equipo. Esos días **no cuentan** para el cumplimiento, así que quien
+  estuvo de licencia no queda marcado como incumplidor. Los días laborables de
+  la semana se configuran con `CG_DIAS_LABORABLES`.
+- *Informes* → **cualquier rango de fechas** (no solo el mes): totales del
+  período, detalle por persona y, si se marca la casilla, la **comparación con
+  el período anterior** de igual duración (sube/baja por persona y por total).
+  Se ve en pantalla y se baja igual en PDF.
 - *Comentarios* → en el panel y en registros puedes dejarle una observación a
   cada reporte diario (el empleado la ve, pero no puede editarla).
 - *Respaldos* → copia de seguridad automática (cada 24 h y al arrancar) y botón
@@ -129,8 +143,9 @@ borra solo** en cuanto el jefe cambia su PIN.
 
 **Empleado**
 
-- *Panel* → elegir la meta, escribir lo que hizo, las horas y el estado, y guardar.
-  También ve **el avance de sus metas** con la barra de progreso.
+- *Panel* → elegir la meta, escribir lo que hizo, las horas, la **cantidad** (si
+  la meta se mide en unidades) y el estado, y guardar. También ve **el avance de
+  sus metas** con la barra de progreso.
   Se puede cargar **desde hace 30 días hasta hoy** (ajustable con
   `CG_DIAS_ATRASO`) y **un solo reporte por día y por meta**: si ya cargaste,
   editá o borrá el anterior en lugar de duplicarlo.
@@ -140,6 +155,31 @@ borra solo** en cuanto el jefe cambia su PIN.
   Si al guardar te aparece un **aviso de carga excesiva** (más de 8 h en un día
   o 40 en la semana) es solo un cartel para revisarlo: **el reporte se guarda
   igual**.
+  Cuando el jefe revisa y **te devuelve** un reporte, te aparece un **aviso rojo
+  arriba del panel** con lo que hay que corregir y un enlace para arreglarlo.
+
+---
+
+## Revisión del trabajo (jefe ↔ empleado)
+
+Cada reporte diario tiene un **estado de revisión**: *Pendiente de revisión*,
+*Aprobado* o *Corrección pendiente*.
+
+- Todo reporte nace **pendiente**. El panel del jefe avisa cuántos hay esperando
+  revisión, con un enlace directo a la lista filtrada.
+- El jefe **Aprueba** el reporte (queda marcado *Aprobado*) o lo **Devuelve**
+  escribiendo qué hay que corregir (queda *Corrección pendiente*). Devolverlo
+  **reversa el avance**: ese reporte deja de sumar para el progreso de la meta
+  hasta que se corrija.
+- La persona ve el aviso en su panel, entra a **Corregir**, ajusta la
+  descripción, las horas y el estado, y guarda. El reporte **vuelve solo** a la
+  bandeja del jefe como *Pendiente de revisión*, con la observación anterior como
+  historial.
+- La fecha no se cambia al corregir: si estaba mal, se borra el reporte y se
+  carga uno nuevo.
+
+Todo el ciclo queda firmado en la **Auditoría** (`revisar_registro`,
+`corregir_registro`).
 
 ---
 
@@ -152,6 +192,32 @@ Hay un instructivo corto en dos lugares:
   analistas: no tienen que abrir ningún archivo.
 - **Para imprimir o enviar**: [`GUIA-ANALISTAS.md`](GUIA-ANALISTAS.md) en esta
   misma carpeta.
+
+---
+
+## Informes por rango de fechas
+
+Además del reporte mensual, el jefe tiene **`/reportes`** (*Informes* en el
+menú): se elige cualquier rango de fechas y el sistema muestra los totales del
+período (reportes, horas, cantidad informada, días con reportes, días
+laborables, completados y puntualidad) y el detalle por persona. Con la casilla
+**Comparar con el período anterior** se agrega la comparación contra los mismos
+días inmediatamente anteriores, con la diferencia por persona y por total
+(`+` sube, `-` baja, `=` igual).
+
+- **Sin fechas** se muestra el mes en curso.
+- Si las fechas vienen **al revés**, se dan vuelta solas.
+- El rango no puede pasar de **3 años** (`MAX_DIAS_INFORME`): no tiene sentido
+  cargar tanto en memoria.
+- El botón **Descargar PDF** baja el mismo informe, con o sin comparación.
+- El mismo motor genera el mensual, el de rango y el de persona
+  (`generar_pdf_rango`, con el mensual como un caso particular), así que las tres
+  versiones muestran siempre los mismos números.
+
+> **Ojo con la lectura:** las comparaciones son de **volumen de trabajo**, no de
+> desempeño. Un período con vacaciones o licencias explica casi toda la
+> diferencia; por eso el sistema tiene las *Novedades* y los días laborables
+> configurables.
 
 ---
 
@@ -205,6 +271,8 @@ acción que cambia información:
 | Duplicar una meta | `duplicar_meta` |
 | Eliminar un reporte | `eliminar_registro` |
 | Dejar (o borrar) un comentario en un reporte | `comentar_registro` |
+| Aprobar o devolver un reporte | `revisar_registro` |
+| Corregir un reporte devuelto | `corregir_registro` |
 | Crear usuario, activar/desactivar, cambiarle el PIN | `crear_usuario`, `cambiar_estado_usuario`, `cambiar_pin` |
 | Cambiar mi propio PIN | `cambiar_pin` |
 | Crear y **restaurar** un respaldo (manual o automático) | `crear_respaldo`, `restaurar_respaldo` |
@@ -242,6 +310,7 @@ Variables de entorno*) o editando `iniciar.bat`:
 | `CG_DIAS_ATRASO`    | `30`                        | Cuántos días hacia atrás se puede cargar un reporte (`0` = solo hoy) |
 | `CG_HORAS_DIA`      | `8`                         | Horas en un día a partir de las cuales aparece el aviso de carga excesiva |
 | `CG_HORAS_SEMANA`   | `40`                        | Horas en la semana a partir de las cuales aparece el aviso (aviso, no bloquea) |
+| `CG_DIAS_LABORABLES` | `1,2,3,4,5`                | Días laborables (1 = lunes … 7 = domingo). Los sábados y domingos no cuentan para el cumplimiento ni se reclaman como día sin reporte. |
 
 Ejemplo para guardar los respaldos en un pendrive, dentro de `iniciar.bat`:
 
@@ -262,6 +331,7 @@ call ".venv\Scripts\python.exe" main.py
 ```
 control-gestion/
 ├── main.py                 # arranque del servidor
+├── LICENSE                 # licencia MIT (uso libre, sin garantía)
 ├── pyproject.toml          # configuración del analizador de código (ruff)
 ├── .github/workflows/      # pruebas automáticas en cada push
 ├── instalar.bat            # instalación en Windows
@@ -277,13 +347,16 @@ control-gestion/
 │   ├── database.py         # SQLite
 │   ├── security.py         # hash de PIN, detección de IP y bloqueo de login
 │   ├── auditoria.py        # deja registro de quién hizo cada cambio
-│   ├── reportes.py         # reportes mensuales en PDF (general y por persona)
+│   ├── reportes.py         # PDF: mensual, por persona y por rango de fechas
 │   ├── progreso.py         # cálculo del avance de las metas
-│   ├── metricas.py         # resumen semanal, gráfico de horas y calendario
+│   ├── metricas.py         # resumen semanal, puntualidad, gráfico y calendario
+│   ├── jornada.py          # qué días cuentan como laborables
+│   ├── novedades.py        # vacaciones, licencias y feriados del período
 │   ├── backup.py           # respaldos automáticos y manuales
 │   ├── migraciones.py      # agrega columnas nuevas a bases ya existentes
 │   ├── seed.py             # crea el usuario jefe la primera vez
 │   ├── templates/          # páginas HTML
+│   │   └── legal/          # privacidad, cookies, términos y licencia
 │   └── static/style.css
 ├── tests/                  # pruebas automáticas
 └── data/control.db         # la base de datos (se crea sola)
@@ -322,8 +395,19 @@ python -m venv .venv
 .venv/Scripts/ruff check .                                    # analizador de código
 ```
 
-Las mismas dos comandas corren solas en GitHub Actions con cada push
-(`.github/workflows/ci.yml`).
+La cobertura se mide (y se exige un mínimo de **90%**) así:
+
+```bash
+.venv/Scripts/python -m pytest tests --cov --cov-report=term-missing
+```
+
+Las pruebas, la cobertura y el analizador corren solos en GitHub Actions con cada
+push (`.github/workflows/ci.yml`).
+
+> **Correr un módulo suelto:** los archivos `tests/test_NN_*.py` comparten la
+> misma base durante la corrida y algunos se apoyan en datos que cargaron los
+> anteriores, así que lo normal es correr `pytest tests` entero.
+> `tests/test_14_revision.py` sí es autocontenido.
 
 ---
 
@@ -335,10 +419,82 @@ HTTPS. No la expongas directamente a internet.
 
 Lo que sí está cubierto:
 
-- **Intentos de PIN:** 5 fallos por IP + usuario en 5 minutos bloquean el login
-  con un aviso, y el bloqueo crece (5, 10, 20… hasta 30 minutos) si sigue
-  insistiendo. Cualquier otra persona sigue pudiendo entrar mientras tanto.
+- **Intentos de PIN:** 5 fallos de la misma IP + usuario bloquean el login con
+  un aviso, y el bloqueo crece (5, 10, 20… hasta 30 minutos) si sigue
+  insistiendo. Los fallos se cuentan desde el último acierto y no se olvidan con
+  el tiempo, así que un ataque lento tampoco lo saltea. Cualquier otra persona
+  sigue pudiendo entrar mientras tanto.
 - **PIN de fábrica:** nadie queda logueado con el PIN inicial: hasta que lo
   cambie, solo puede ver *Ayuda* y *Cambiar mi PIN*.
+- **Sesiones:** al **resetear el PIN** de una persona (o al cambiar el propio)
+  se corta la sesión que esa persona tuviera abierta en cualquier PC. La cookie
+  de sesión es `HttpOnly` y `SameSite=Lax`.
 - **Trazabilidad:** toda acción que borra o modifica información queda en la
   tabla `auditoria` (ver [Auditoría](#auditoría-quién-hizo-qué)).
+- **Cabeceras HTTP:** todas las respuestas salen con `X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy` y `X-Robots-Tag` (para que ningún buscador
+  indexe el sistema). No se bloquean F12 ni el clic derecho: se saltean con
+  facilidad y sólo molestarían al copiar datos para trabajar.
+
+---
+
+## Licencia y marco legal
+
+Este programa es **libre y gratuito** (licencia [MIT](LICENSE)): se puede clonar,
+usar, modificar y compartir, incluso en otras divisiones u organismos, sin pagar
+nada. No es un producto para la venta. Se entrega **tal cual**, sin garantía, y
+los autores no responden por el uso que se haga de él (ver `LICENSE`).
+
+Si preferís que la titularidad figure a tu nombre o al de tu institución, sólo
+hay que reemplazar la línea de copyright del archivo `LICENSE`.
+
+### Textos legales dentro del sistema
+
+El pie de la pantalla de entrada (y el de todas las páginas) tiene cuatro
+enlaces, que se sirven **sin necesidad de iniciar sesión**:
+
+| Página | Ruta |
+|---|---|
+| Política de Privacidad | `/legal/privacidad` |
+| Política de Cookies | `/legal/cookies` |
+| Términos y condiciones | `/legal/terminos` |
+| Licencia | `/legal/licencia` |
+
+Los textos viven en `app/templates/legal/` y la versión y la fecha se declaran
+en `app/main.py` (`VERSION_LEGAL`, `ACTUALIZADO_LEGAL`, `DOCUMENTOS_LEGALES`).
+
+### Qué dicen (resumen)
+
+- **No hay recolección para terceros ni salida a internet.** No hay analítica,
+  publicidad, perfilado, ni recursos alojados afuera: la base SQLite queda en el
+  equipo servidor, dentro de la red interna.
+- **Una sola cookie**, `session`, la que mantiene la sesión iniciada. No hay
+  cookies de terceros.
+- **No se guardan** datos como documento, domicilio, teléfono, correo, datos
+  bancarios o de salud, imágenes, capturas, teclas presionadas, ubicación ni
+  direcciones IP. El bloqueo por intentos fallidos usa la IP sólo en memoria y la
+  olvida al reiniciar.
+- **No pide ni calcula datos financieros ni comerciales:** montos de ingresos,
+  saldos, descuadres, números de cuenta o de comprobante, ni nombres de empresas
+  que pagaron. No hay campos para eso.
+- **El único campo libre es la descripción**, y ahí el sistema guarda el texto tal
+  cual se escriba. El formulario y la guía avisan que no se pongan montos ni
+  números de cuenta; el filtro real es una instrucción interna del área, no una
+  validación del programa.
+- **No es un control de asistencia** ni de horarios, y no monitorea la PC: sólo
+  guarda lo que cada persona informa.
+- **Límite honesto:** la base no está cifrada y no hay HTTPS (está pensado para
+  una red interna de confianza). Quien tenga acceso de administrador al equipo
+  servidor o a un respaldo puede leer el archivo. El equipo y las copias deben
+  quedar en un lugar con acceso restringido.
+
+> **Importante:** los textos legales son un **modelo genérico orientativo** y no
+> constituyen asesoramiento legal. En Venezuela no hay, a la fecha, una ley
+> especial de protección de datos personales vigente: el marco aplicable es el
+> artículo 60 de la Constitución (privacidad, intimidad y habeas data), la Ley
+> sobre Protección a la Privacidad de las Comunicaciones, la Ley Especial contra
+> los Delitos Informáticos y, para el Poder Público, la Ley de Infogobierno.
+> Conviene revisar los textos con la asesoría jurídica del organismo antes de
+> usarlos en producción. Quien administra la instalación es el responsable del
+> tratamiento de los datos y debe informar al equipo sobre el uso del sistema.
+

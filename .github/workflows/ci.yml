@@ -26,5 +26,7 @@ jobs:
       - name: Analizador de codigo
         run: ruff check .
 
-      - name: Pruebas
-        run: python -m pytest tests -q
+      - name: Pruebas y cobertura
+        run: >
+          python -m pytest tests -q
+          --cov --cov-report=term-missing --cov-fail-under=90

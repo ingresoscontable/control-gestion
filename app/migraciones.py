@@ -16,7 +16,15 @@ logger = logging.getLogger(__name__)
 COLUMNAS_NUEVAS = [
     ("registros", "comentario", "TEXT DEFAULT ''"),
     ("registros", "comentado_en", "DATETIME"),
+    ("registros", "estado_revision", "VARCHAR(20) DEFAULT 'pendiente'"),
+    ("registros", "revisado_por", "INTEGER"),
+    ("registros", "revisado_en", "DATETIME"),
+    ("registros", "observacion_revision", "TEXT DEFAULT ''"),
     ("metas", "horas_estimadas", "FLOAT DEFAULT 0"),
+    ("metas", "objetivo", "FLOAT DEFAULT 0"),
+    ("metas", "unidad", "VARCHAR(30) DEFAULT ''"),
+    ("registros", "cantidad", "FLOAT DEFAULT 0"),
+    ("usuarios", "sesion_token", "VARCHAR(64)"),
 ]
 
 # (nombre, tabla, columnas). Solo se crean si la tabla ya tiene esas columnas,
@@ -24,6 +32,7 @@ COLUMNAS_NUEVAS = [
 INDICES_NUEVOS = [
     ("ix_registros_fecha", "registros", ["fecha"]),
     ("ix_registros_usuario_fecha", "registros", ["usuario_id", "fecha"]),
+    ("ix_registros_revision", "registros", ["estado_revision"]),
     ("ix_metas_estado_fecha_limite", "metas", ["estado", "fecha_limite"]),
 ]
 
@@ -45,6 +54,21 @@ def _registros_duplicados(conexion) -> tuple[int, list]:
            ORDER BY n DESC"""
     ).fetchall()
     return len(filas), filas
+
+
+def _asegurar_sesion_token(conexion) -> None:
+    """Completa el token de los usuarios que ya existian antes de la columna.
+
+    Sin esto los usuarios viejos quedarian con token NULL y la comprobacion de
+    sesion no podria aplicarse. `hex(randomblob(16))` lo genera en SQL para no
+    tener que leer fila por fila.
+    """
+    if "sesion_token" not in _columnas(conexion, "usuarios"):
+        return
+    conexion.exec_driver_sql(
+        "UPDATE usuarios SET sesion_token = hex(randomblob(16)) "
+        "WHERE sesion_token IS NULL OR sesion_token = ''"
+    )
 
 
 def _asegurar_indice_unico(conexion) -> None:
@@ -104,4 +128,5 @@ def aplicar_migraciones() -> None:
                 f"CREATE INDEX IF NOT EXISTS {nombre} ON {tabla} ({', '.join(columnas)})"
             )
 
+        _asegurar_sesion_token(conexion)
         _asegurar_indice_unico(conexion)

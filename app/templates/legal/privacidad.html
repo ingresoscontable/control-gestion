@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }} · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<article class="legal">
+  <h1>{{ titulo }}</h1>
+  <p class="muted small">
+    Versión {{ version_legal }} · Última actualización: {{ actualizado_legal }}
+  </p>
+
+  {% include "legal/_nav.html" %}
+
+  <p>
+    <strong>Resumen en una línea:</strong> este sistema no recolecta datos para
+    terceros ni se conecta a internet. Solo guarda, dentro del equipo que hace
+    de servidor, la información de trabajo que cada persona informa, para el
+    control de gestión del área.
+  </p>
+
+  <h2>1. Quién es responsable de los datos</h2>
+  <p>
+    El responsable del tratamiento es <strong>la institución que instala el
+    sistema</strong> y, en la práctica diaria, <strong>la persona que lo
+    administra</strong> (el jefe del área o quien ocupe ese rol). Las
+    consultas o pedidos sobre los datos se hacen a esa persona.
+  </p>
+
+  <h2>2. Qué datos guarda el sistema</h2>
+  <div class="card">
+    <table class="tabla">
+      <thead>
+        <tr><th>Dato</th><th>Para qué se usa</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Nombre y apellido</td><td>Identificar a quién corresponde cada reporte</td></tr>
+        <tr><td>Usuario de acceso</td><td>Iniciar sesión</td></tr>
+        <tr><td>Cargo</td><td>Mostrar el rol dentro del equipo</td></tr>
+        <tr>
+          <td>PIN de acceso</td>
+          <td>
+            Autenticación. Se guarda derivado con PBKDF2-SHA256 (120.000
+            iteraciones), nunca en texto plano, y no se puede recuperar del
+            sistema.
+          </td>
+        </tr>
+        <tr>
+          <td>Fecha, meta, descripción del trabajo, horas y cantidad informadas</td>
+          <td>Control de gestión del trabajo diario</td>
+        </tr>
+        <tr><td>Estado del reporte y observaciones del jefe</td><td>Revisión y corrección del trabajo</td></tr>
+        <tr><td>Novedades (vacaciones, licencia, feriado)</td><td>No reclamar reportes en esos días</td></tr>
+        <tr>
+          <td>Registro de auditoría: quién creó, editó o borró algo, y cuándo</td>
+          <td>Trazabilidad de los cambios</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>3. Datos que el programa no pide ni guarda</h2>
+  <p>
+    El programa <strong>no solicita, no calcula ni guarda por sí mismo</strong>
+    ninguno de estos datos:
+  </p>
+  <ul>
+    <li>Montos de ingresos, totales, saldos, descuadres ni cifras contables.</li>
+    <li>Nombres de empresas, clientes, proveedores o contribuyentes que pagaron.</li>
+    <li>Números de cuenta, de factura ni de comprobante, ni datos bancarios.</li>
+    <li>Documento de identidad, domicilio, teléfono ni correo electrónico.</li>
+    <li>Datos de salud, de familiares, imágenes ni contenido de archivos.</li>
+    <li>
+      Capturas de pantalla, teclas presionadas, ubicación, historial de
+      navegación ni direcciones IP.
+    </li>
+  </ul>
+
+  <h3>El detalle importante: el campo de texto libre</h3>
+  <p>
+    El formulario tiene un único campo de <strong>texto libre</strong> ("Qué
+    hiciste") donde cada persona describe su trabajo con sus palabras. El
+    programa no pide ahí información financiera ni comercial, y no debería
+    escribirse. Pero si alguien escribe, por ejemplo, "hay un descuadre de
+    Bs. 12.400 en la cuenta que termina en 2141" o el nombre de una empresa que
+    pagó, ese texto <strong>queda guardado tal cual</strong>, en texto plano, en
+    la base del equipo servidor.
+  </p>
+  <p>
+    Por eso la recomendación es explícita: en la descripción va <strong>solo lo
+    que se hizo y cómo va el trabajo</strong>, sin montos, sin números de cuenta
+    o de comprobante, sin nombres de empresas o personas y sin datos
+    confidenciales de la organización. Si hace falta dejar constancia de un
+    bloqueo, alcanza con decir "cuenta pendiente de conciliación": el detalle
+    numérico va por el canal interno habitual de la oficina, no por este
+    sistema.
+  </p>
+  <p>
+    El sistema muestra un recordatorio en el formulario, pero <strong>no filtra
+    ni bloquea</strong> lo que se escribe. Quien administra la instalación
+    debería respaldar esta regla con una instrucción interna del área.
+  </p>
+  <p>
+    El bloqueo por intentos fallidos de PIN usa la dirección IP del momento,
+    pero <strong>solo en memoria y por menos de 24 horas</strong>: no se
+    guarda en la base de datos ni en ningún archivo, y se pierde al reiniciar
+    el programa.
+  </p>
+  <p>
+    Tampoco hay analítica, publicidad, perfilado ni envío de información a
+    terceros. Las páginas y las fuentes tipográficas se sirven desde el mismo
+    equipo, sin depender de servidores externos.
+  </p>
+
+  <h2>4. Dónde se guardan los datos</h2>
+  <p>
+    En un único archivo de base de datos SQLite (<code>data/control.db</code>)
+    que vive en el equipo que hace de servidor, dentro de la red interna. No
+    se copia a internet ni a servicios en la nube.
+  </p>
+
+  <h2>5. Cómo se protegen</h2>
+  <ul>
+    <li>Acceso con usuario y PIN; el PIN se guarda derivado (PBKDF2-SHA256).</li>
+    <li>Cinco intentos fallidos por IP y usuario bloquean el login un rato, y la espera crece si se insiste.</li>
+    <li>La cookie de sesión es <code>HttpOnly</code> y <code>SameSite=Lax</code>.</li>
+    <li>Al cambiar o resetear un PIN se cortan las sesiones que estuvieran abiertas.</li>
+    <li>Toda acción que borra o modifica información queda firmada en la auditoría.</li>
+  </ul>
+  <p>
+    <strong>Límite a tener en cuenta:</strong> la base de datos no está
+    cifrada y el sistema no usa HTTPS porque está pensado para una red interna
+    de confianza. Cualquiera con acceso de administrador al equipo servidor, o
+    a una copia de respaldo, puede leer el archivo. Por eso el equipo y los
+    respaldos deben quedar en un lugar con acceso restringido, y si una copia
+    sale del equipo tiene que ir en un medio protegido.
+  </p>
+
+  <h2>6. Quién puede ver la información</h2>
+  <ul>
+    <li>
+      <strong>El jefe o administrador:</strong> todos los reportes del equipo,
+      las observaciones, la exportación a Excel, los informes en PDF y la
+      auditoría.
+    </li>
+    <li>
+      <strong>Cada integrante:</strong> sus propios reportes, sus metas y sus
+      novedades. Además, el panel muestra un
+      <strong>resumen semanal del equipo</strong> con los totales por persona
+      (reportes, horas y cumplimiento), que es visible para todos los
+      integrantes del área.
+    </li>
+    <li><strong>Nadie más:</strong> el sistema no tiene acceso público desde internet.</li>
+  </ul>
+
+  <h2>7. Cuánto tiempo se conservan</h2>
+  <p>
+    Mientras el sistema esté en uso. El administrador puede exportar la
+    información a Excel o PDF y eliminar registros o personas en cualquier
+    momento.
+  </p>
+
+  <h2>8. Derechos de las personas</h2>
+  <p>
+    Cualquier integrante puede pedir al responsable: ver qué datos suyos hay
+    guardados, corregirlos si están mal, actualizarlos o pedir su supresión.
+    Los pedidos se hacen directamente al jefe del área.
+  </p>
+
+  <h2>9. Cambios en esta política</h2>
+  <p>
+    Si cambia lo que guarda el sistema, se actualiza este texto y su fecha.
+    La versión vigente es siempre la que se ve en esta página.
+  </p>
+
+  <h2>10. Normativa aplicable (Venezuela)</h2>
+  <p>
+    Este texto es un <strong>modelo genérico y orientativo</strong>: no es
+    asesoramiento legal y no reemplaza la revisión que deba hacer la asesoría
+    jurídica del organismo donde se instale.
+  </p>
+  <p>
+    En Venezuela no hay, a la fecha de esta versión, una ley especial de
+    protección de datos personales vigente. El marco aplicable es:
+  </p>
+  <ul>
+    <li>
+      <strong>Constitución de la República Bolivariana de Venezuela, artículo
+      60:</strong> derecho a la privacidad, la intimidad, el honor y la propia
+      imagen, inviolabilidad de las comunicaciones y derecho de acceso,
+      rectificación y supresión de los datos propios (habeas data).
+    </li>
+    <li>
+      <strong>Ley sobre Protección a la Privacidad de las Comunicaciones</strong>
+      (Gaceta Oficial N° 34.863, 1991).
+    </li>
+    <li>
+      <strong>Ley Especial contra los Delitos Informáticos</strong>
+      (Gaceta Oficial N° 37.313, 2001), aplicable al acceso no autorizado a
+      datos.
+    </li>
+    <li>
+      <strong>Ley de Infogobierno</strong> (2013), para las entidades del Poder
+      Público en materia de tecnologías de información.
+    </li>
+  </ul>
+  <p>
+    Si se sanciona una ley especial de protección de datos personales, o si el
+    organismo tiene normas internas propias, estos textos deben actualizarse.
+    Quien administra la instalación debe revisarlos con la asesoría jurídica
+    antes de usar el sistema en producción, e informar al equipo sobre su uso.
+  </p>
+</article>
+
+{% endblock %}

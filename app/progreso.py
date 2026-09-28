@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
-from .models import Meta, Registro
+from .models import REVISION_DEVUELTA, Meta, Registro
 
 # Colores por nivel de avance (se usan tambien en el PDF).
 NIVEL_COMPLETA = "completa"
@@ -20,10 +20,18 @@ NIVEL_BAJA = "baja"
 
 
 def _calcular_avance(
-    estado: str, horas: float, estimadas: float, reportes: int, completados: int
+    estado: str,
+    horas: float,
+    estimadas: float,
+    reportes: int,
+    completados: int,
+    cantidad: float = 0.0,
+    objetivo: float = 0.0,
 ) -> int:
     if estado == "cerrada":
         return 100
+    if objetivo and objetivo > 0:
+        return min(100, round(cantidad / objetivo * 100))
     if estimadas and estimadas > 0:
         return min(100, round(horas / estimadas * 100))
     if reportes:
@@ -37,6 +45,9 @@ def progreso_metas(db: Session, metas: list[Meta]) -> list[dict]:
     El porcentaje sale de las horas estimadas si la meta las tiene; si no, de la
     proporcion de reportes marcados como completados. Una meta cerrada cuenta
     como 100%.
+
+    Los reportes que el jefe devolvio (``correccion_pendiente``) **no** suman:
+    el avance se reversa hasta que la persona los corrija.
     """
     if not metas:
         return []
@@ -49,8 +60,15 @@ def progreso_metas(db: Session, metas: list[Meta]) -> list[dict]:
             func.coalesce(
                 func.sum(case((Registro.estado == "completado", 1), else_=0)), 0
             ),
+            func.coalesce(func.sum(Registro.cantidad), 0.0),
         )
-        .where(Registro.meta_id.in_([meta.id for meta in metas]))
+        .where(
+            Registro.meta_id.in_([meta.id for meta in metas]),
+            or_(
+                Registro.estado_revision.is_(None),
+                Registro.estado_revision != REVISION_DEVUELTA,
+            ),
+        )
         .group_by(Registro.meta_id)
     ).all()
     acumulado = {fila[0]: fila for fila in filas}
@@ -61,9 +79,16 @@ def progreso_metas(db: Session, metas: list[Meta]) -> list[dict]:
         reportes = int(fila[1]) if fila else 0
         horas = float(fila[2]) if fila else 0.0
         completados = int(fila[3]) if fila else 0
+        cantidad = float(fila[4]) if fila else 0.0
 
         avance = _calcular_avance(
-            meta.estado, horas, meta.horas_estimadas or 0, reportes, completados
+            meta.estado,
+            horas,
+            meta.horas_estimadas or 0,
+            reportes,
+            completados,
+            cantidad,
+            meta.objetivo or 0,
         )
         resultado.append(
             {
@@ -71,6 +96,7 @@ def progreso_metas(db: Session, metas: list[Meta]) -> list[dict]:
                 "reportes": reportes,
                 "horas": horas,
                 "completados": completados,
+                "cantidad": cantidad,
                 "avance": avance,
                 "nivel": (
                     NIVEL_COMPLETA

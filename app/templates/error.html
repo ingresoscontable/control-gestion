@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block titulo %}Algo salió mal · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Algo salió mal</h1>
+<p class="sub">
+  El sistema tuvo un problema y no pudo completar la operación.
+  Ya quedó registrado en el log del servidor.
+</p>
+
+<section class="card">
+  <p>
+    Probá de nuevo en unos segundos. Si el problema sigue, avisale al jefe y
+    revisá <code>data/sistema.log</code> para ver el detalle.
+  </p>
+  <p>
+    <a class="btn ghost" href="/">Volver al panel</a>
+  </p>
+</section>
+
+{% endblock %}

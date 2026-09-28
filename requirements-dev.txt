@@ -4,5 +4,8 @@
 pytest==8.3.4
 httpx==0.28.1
 
+# Cobertura de las pruebas (pytest --cov=app)
+pytest-cov==7.1.0
+
 # Analizador de codigo (ruff check .)
 ruff==0.16.9

@@ -11,7 +11,7 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-from fastapi import Depends, FastAPI, Form, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -22,23 +22,37 @@ from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import auditoria, backup, config, reportes
+from . import novedades as novedades_db
 from .database import Base, SessionLocal, engine, get_db
-from .metricas import calendario_mes, horas_por_semana, resumen_semanal
+from .jornada import describir_dias, es_laborable
+from .metricas import (
+    calendario_mes,
+    expresion_en_fecha,
+    horas_por_semana,
+    puntualidad,
+    resumen_semanal,
+)
 from .migraciones import aplicar_migraciones
 from .models import (
     ACCIONES_AUDITORIA,
     ESTADO_ELIMINADA,
     ESTADOS_META,
     ESTADOS_REGISTRO,
+    ESTADOS_REVISION,
     OPCIONES_AUDITORIA,
     OPCIONES_META,
+    OPCIONES_NOVEDAD,
     OPCIONES_REGISTRO,
+    REVISION_DEVUELTA,
     ROL_EMPLEADO,
     ROL_JEFE,
+    TIPOS_NOVEDAD,
     Auditoria,
     Meta,
+    Novedad,
     Registro,
     Usuario,
+    nuevo_token_de_sesion,
 )
 from .progreso import metas_vencidas, progreso_metas, progreso_por_id
 from .security import (
@@ -56,6 +70,17 @@ APP_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
 logger = logging.getLogger(__name__)
+
+# Textos legales del sistema. Son paginas publicas (se leen sin iniciar
+# sesion) para que cualquiera pueda conocerlas antes de usar la herramienta.
+VERSION_LEGAL = "1.0"
+ACTUALIZADO_LEGAL = "27/09/2026"
+DOCUMENTOS_LEGALES = [
+    ("privacidad", "Política de Privacidad"),
+    ("cookies", "Cookies"),
+    ("terminos", "Términos y condiciones"),
+    ("licencia", "Licencia"),
+]
 
 
 def _auditar_respaldo_automatico(nombre: str) -> None:
@@ -91,6 +116,23 @@ app.add_middleware(SessionMiddleware, secret_key=config.SECRET_KEY)
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 
 
+@app.middleware("http")
+async def headers_de_seguridad(request: Request, call_next) -> Response:
+    """Headers de seguridad basicos en todas las respuestas.
+
+    No se bloquea F12 ni el click derecho (se saltean y rompen el copiado de
+    datos): son headers que el navegador respeta de verdad.
+    """
+    respuesta = await call_next(request)
+    respuesta.headers.setdefault("X-Content-Type-Options", "nosniff")
+    respuesta.headers.setdefault("X-Frame-Options", "DENY")
+    respuesta.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    respuesta.headers.setdefault(
+        "X-Robots-Tag", "noindex, nofollow, nosnippet, noarchive"
+    )
+    return respuesta
+
+
 # --------------------------------------------------------------------------
 # Autenticación
 # --------------------------------------------------------------------------
@@ -111,12 +153,29 @@ async def manejar_redireccion(request: Request, excepcion: Redireccionar) -> Res
     return RedirectResponse(excepcion.destino, status_code=303)
 
 
+@app.exception_handler(Exception)
+async def error_interno(request: Request, excepcion: Exception) -> Response:
+    """Pagina amigable en vez del error crudo del servidor.
+
+    El detalle queda en data/sistema.log; al usuario solo se le dice que algo
+    salio mal, sin filtrar el traceback.
+    """
+    logger.error("Error no controlado en %s", request.url.path, exc_info=excepcion)
+    return templates.TemplateResponse(
+        request, "error.html", contexto(request, None), status_code=500
+    )
+
+
 def usuario_actual(request: Request, db: Session = Depends(get_db)) -> Usuario | None:
     uid = request.session.get("usuario_id")
     if not uid:
         return None
     usuario = db.get(Usuario, uid)
     if usuario is None or not usuario.activo:
+        request.session.clear()
+        return None
+    # Si le resetearon el PIN, la cookie vieja deja de valer en el acto.
+    if usuario.sesion_token and request.session.get("sesion_token") != usuario.sesion_token:
         request.session.clear()
         return None
     return usuario
@@ -171,7 +230,9 @@ def volver_a(valor: str, por_defecto: str = "/") -> str:
     de listado pasan la direccion entera para volver al mismo lugar.
     """
     base = (valor or "").split("?", 1)[0]
-    return valor if base in PAGINAS_VALIDAS else por_defecto
+    if base in PAGINAS_VALIDAS or base.startswith("/personas/"):
+        return valor
+    return por_defecto
 
 
 def pagina_de(valor: str) -> int:
@@ -201,6 +262,10 @@ def contexto(request: Request, usuario: Usuario | None, **extra) -> dict:
         "hoy": date.today(),
         "limite_carga": date.today() - timedelta(days=config.DIAS_ATRASO),
         "APP_NAME": config.APP_NAME,
+        "estados_revision": ESTADOS_REVISION,
+        "revision_etiquetas": dict(ESTADOS_REVISION),
+        "dias_laborables_txt": describir_dias(config.DIAS_LABORABLES),
+        "documentos": DOCUMENTOS_LEGALES,
     }
     datos.update(extra)
     return datos
@@ -250,6 +315,11 @@ def meta_usable(db: Session, usuario: Usuario, meta_id: int) -> bool:
     if usuario.es_jefe:
         return True
     return meta.asignado_a is None or meta.asignado_a == usuario.id
+
+
+def puede_corregir(usuario: Usuario, registro: Registro) -> bool:
+    """Puede editar un reporte: su dueño o el jefe."""
+    return usuario.es_jefe or registro.usuario_id == usuario.id
 
 
 def registro_duplicado(db: Session, usuario_id: int, dia: date, meta_id: int | None) -> bool:
@@ -312,6 +382,7 @@ def filtrar_registros(
     meta_id: str = "",
     texto: str = "",
     estado: str = "",
+    revision: str = "",
 ):
     """Arma la consulta de registros y los filtros aplicados.
 
@@ -348,6 +419,11 @@ def filtrar_registros(
         consulta = consulta.where(Registro.estado == estado)
         filtros["estado"] = estado
 
+    revision = (revision or "").strip()
+    if revision in {clave for clave, _ in ESTADOS_REVISION}:
+        consulta = consulta.where(Registro.estado_revision == revision)
+        filtros["revision"] = revision
+
     return consulta, filtros
 
 
@@ -358,12 +434,13 @@ def totales_registros(db: Session, consulta) -> dict:
     limitada: si no, el total de horas que aparece en pantalla dejaria de
     coincidir con lo que realmente hay en la base.
     """
-    cantidad, horas, dias, comentarios = db.execute(
+    cantidad, horas, dias, comentarios, en_fecha = db.execute(
         consulta.with_only_columns(
             func.count(Registro.id),
             func.coalesce(func.sum(Registro.horas), 0.0),
             func.count(func.distinct(Registro.fecha)),
             func.coalesce(func.sum(case((Registro.comentario != "", 1), else_=0)), 0),
+            func.coalesce(func.sum(case((expresion_en_fecha(), 1), else_=0)), 0),
         ).order_by(None)
     ).one()
     return {
@@ -371,6 +448,7 @@ def totales_registros(db: Session, consulta) -> dict:
         "horas": float(horas or 0.0),
         "dias": int(dias or 0),
         "comentarios": int(comentarios or 0),
+        "en_fecha": int(en_fecha or 0),
     }
 
 
@@ -452,6 +530,7 @@ def login(
         )
     intentos_login.limpiar(clave)
     request.session["usuario_id"] = user.id
+    request.session["sesion_token"] = user.sesion_token
     return ir_a("/", f"Hola {user.nombre}")
 
 
@@ -514,6 +593,39 @@ def panel(
 
     resumen, semana_inicio = resumen_semanal(db, equipo, hoy)
 
+    # Revision: lo que el jefe tiene por revisar y lo que le devolvieron a
+    # esta persona (para que se entere sin tener que buscarlo).
+    por_revisar = int(
+        db.scalar(
+            select(func.count(Registro.id)).where(Registro.estado_revision == "pendiente")
+        )
+        or 0
+    )
+    devueltos = list(
+        db.scalars(
+            select(Registro)
+            .where(
+                Registro.usuario_id == usuario.id,
+                Registro.estado_revision == REVISION_DEVUELTA,
+            )
+            .options(*OPCIONES_REGISTRO)
+            .order_by(Registro.fecha.desc())
+        )
+    )
+
+    # Solo se les reclama el reporte a quienes hoy trabajan: si no es dia
+    # laborable, o estan de licencia, no corresponde.
+    hoy_laborable = es_laborable(hoy)
+    registrar_hoy = []
+    if hoy_laborable:
+        registrar_hoy = [
+            persona
+            for persona in equipo
+            if persona.id not in ids_registraron
+            and persona.rol != ROL_JEFE
+            and not novedades_db.hay_novedad(db, persona.id, hoy)
+        ]
+
     # ?repetir=<id> precarga el formulario con un registro propio: sirve para
     # repetir la carga del dia anterior sin volver a escribir todo.
     a_repetir = None
@@ -553,8 +665,11 @@ def panel(
             mis_metas=visibles,
             mis_registros=mis_registros,
             a_repetir=a_repetir,
-            registrar_hoy=[u for u in equipo if u.id not in ids_registraron and u.rol != ROL_JEFE],
+            hoy_laborable=es_laborable(hoy),
+            registrar_hoy=registrar_hoy,
             resumen_semana=resumen,
+            por_revisar=por_revisar,
+            devueltos=devueltos,
             semana_inicio=semana_inicio,
             semana_fin=semana_inicio + timedelta(days=6),
             grafico=horas_por_semana(db, equipo, hoy) if usuario.es_jefe else None,
@@ -574,6 +689,7 @@ def crear_registro(
     fecha: str = Form(""),
     descripcion: str = Form(...),
     horas: str = Form("0"),
+    cantidad: str = Form("0"),
     estado: str = Form("en_progreso"),
 ):
     descripcion = descripcion.strip()
@@ -612,6 +728,7 @@ def crear_registro(
             fecha=dia,
             descripcion=descripcion,
             horas=parse_horas(horas),
+            cantidad=parse_numero(cantidad),
             estado=estado,
         )
     )
@@ -636,9 +753,12 @@ def listar_registros(
     hasta: str = "",
     texto: str = "",
     estado: str = "",
+    revision: str = "",
     page: str = "",
 ):
-    consulta, filtros = filtrar_registros(usuario_id, desde, hasta, meta_id, texto, estado)
+    consulta, filtros = filtrar_registros(
+        usuario_id, desde, hasta, meta_id, texto, estado, revision
+    )
     totales = totales_registros(db, consulta)
     paginas = max(1, -(-totales["cantidad"] // POR_PAGINA))
     pagina = min(pagina_de(page), paginas)
@@ -668,6 +788,7 @@ def listar_registros(
             total_horas=totales["horas"],
             total_dias=totales["dias"],
             total_comentarios=totales["comentarios"],
+            total_en_fecha=totales["en_fecha"],
             mostrados=len(registros),
             meses=reportes.MESES,
         ),
@@ -684,9 +805,12 @@ def exportar_registros(
     hasta: str = "",
     texto: str = "",
     estado: str = "",
+    revision: str = "",
 ):
     """Descarga en Excel los registros que cumplen los filtros elegidos."""
-    consulta, _filtros = filtrar_registros(usuario_id, desde, hasta, meta_id, texto, estado)
+    consulta, _filtros = filtrar_registros(
+        usuario_id, desde, hasta, meta_id, texto, estado, revision
+    )
     totales = totales_registros(db, consulta)
     registros = list(
         db.scalars(consulta.options(*OPCIONES_REGISTRO).limit(LIMITE_EXPORTACION))
@@ -703,9 +827,11 @@ def exportar_registros(
             "Meta",
             "Que hizo",
             "Horas",
+            "Cantidad",
             "Estado",
             "Cargado el",
             "Comentario del jefe",
+            "Revisión",
         ]
     )
     for celda in hoja[1]:
@@ -720,9 +846,11 @@ def exportar_registros(
                 r.meta.titulo if r.meta else "",
                 r.descripcion,
                 r.horas,
+                r.cantidad,
                 r.estado.replace("_", " "),
                 r.creado_en.strftime("%d/%m/%Y %H:%M") if r.creado_en else "",
                 r.comentario or "",
+                dict(ESTADOS_REVISION).get(r.estado_revision, r.estado_revision),
             ]
         )
 
@@ -744,7 +872,9 @@ def exportar_registros(
         )
 
     for columna, ancho in zip(
-        "ABCDEFGHI", [12, 24, 20, 34, 58, 9, 14, 18, 42], strict=True
+        "ABCDEFGHIJK",
+        [12, 24, 20, 34, 58, 9, 11, 14, 18, 42, 20],
+        strict=True,
     ):
         hoja.column_dimensions[columna].width = ancho
     hoja.freeze_panes = "A2"
@@ -874,6 +1004,125 @@ def comentar_registro(
 
 
 # --------------------------------------------------------------------------
+# Revision del trabajo: el jefe aprueba o devuelve, la persona corrige
+# --------------------------------------------------------------------------
+@app.post("/registros/{registro_id}/revisar")
+def revisar_registro(
+    registro_id: int,
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+    estado_revision: str = Form(...),
+    observacion: str = Form(""),
+    volver: str = Form("/registros"),
+):
+    """El jefe aprueba el reporte o lo devuelve para que lo corrijan.
+
+    Devolverlo (``correccion_pendiente``) es la reversion del progreso: el
+    reporte deja de sumar para el avance de la meta hasta que se corrija.
+    """
+    destino = volver_a(volver, "/registros")
+    registro = db.get(Registro, registro_id)
+    if registro is None:
+        return ir_a(destino, "Ese registro ya no existe")
+
+    if estado_revision not in {"aprobado", REVISION_DEVUELTA}:
+        return ir_a(destino, "Estado de revisión inválido")
+
+    observacion = observacion.strip()[:500]
+    if estado_revision == REVISION_DEVUELTA and not observacion:
+        return ir_a(destino, "Escribí qué hay que corregir antes de devolverlo")
+
+    registro.estado_revision = estado_revision
+    registro.revisado_por = usuario.id
+    registro.revisado_en = datetime.now()
+    registro.observacion_revision = observacion
+    auditoria.registrar(
+        db,
+        usuario,
+        "revisar_registro",
+        "registro",
+        registro.id,
+        (f"{registro.fecha.isoformat()}: {estado_revision} {observacion}")[:255],
+    )
+    db.commit()
+    return ir_a(
+        destino,
+        "Reporte aprobado"
+        if estado_revision == "aprobado"
+        else "Reporte devuelto para corrección",
+    )
+
+
+@app.get("/registros/{registro_id}/corregir")
+def corregir_registro_form(
+    registro_id: int,
+    request: Request,
+    usuario: Usuario = Depends(requiere_login),
+    db: Session = Depends(get_db),
+):
+    """Formulario para que la persona arregle un reporte devuelto."""
+    registro = db.get(Registro, registro_id)
+    if registro is None:
+        return ir_a("/", "Ese registro ya no existe")
+    if not puede_corregir(usuario, registro):
+        return ir_a("/", "No puedes corregir registros de otra persona")
+    return templates.TemplateResponse(
+        request,
+        "corregir.html",
+        contexto(
+            request,
+            usuario,
+            registro=registro,
+            estados_registro=ESTADOS_REGISTRO,
+        ),
+    )
+
+
+@app.post("/registros/{registro_id}/corregir")
+def corregir_registro(
+    registro_id: int,
+    usuario: Usuario = Depends(requiere_login),
+    db: Session = Depends(get_db),
+    descripcion: str = Form(...),
+    horas: str = Form("0"),
+    cantidad: str = Form("0"),
+    estado: str = Form("en_progreso"),
+):
+    """Guarda la corrección y vuelve a mandar el reporte a revisión."""
+    registro = db.get(Registro, registro_id)
+    if registro is None:
+        return ir_a("/", "Ese registro ya no existe")
+    if not puede_corregir(usuario, registro):
+        return ir_a("/", "No puedes corregir registros de otra persona")
+
+    descripcion = descripcion.strip()
+    if not descripcion:
+        return ir_a(f"/registros/{registro.id}/corregir", "La descripción no puede estar vacía")
+    if estado not in {clave for clave, _ in ESTADOS_REGISTRO}:
+        return ir_a(f"/registros/{registro.id}/corregir", "Estado inválido")
+
+    registro.descripcion = descripcion
+    registro.horas = parse_horas(horas)
+    registro.cantidad = parse_numero(cantidad)
+    registro.estado = estado
+    # Vuelve a la bandeja del jefe. La observación queda como historial de lo
+    # que se pidió, así el jefe ve qué se contestó.
+    registro.estado_revision = "pendiente"
+    registro.revisado_por = None
+    registro.revisado_en = None
+    auditoria.registrar(
+        db,
+        usuario,
+        "corregir_registro",
+        "registro",
+        registro.id,
+        f"{registro.fecha.isoformat()}: {descripcion}"[:255],
+    )
+    db.commit()
+    return ir_a("/", "Corrección enviada: queda pendiente de revisión")
+
+
+# --------------------------------------------------------------------------
 # Metas (solo jefe)
 # --------------------------------------------------------------------------
 @app.get("/metas")
@@ -938,6 +1187,8 @@ def crear_meta(
     fecha_inicio: str = Form(""),
     fecha_limite: str = Form(""),
     horas_estimadas: str = Form(""),
+    objetivo: str = Form(""),
+    unidad: str = Form(""),
 ):
     titulo = titulo.strip()
     if not titulo:
@@ -954,6 +1205,8 @@ def crear_meta(
         fecha_inicio=parse_fecha(fecha_inicio),
         fecha_limite=parse_fecha(fecha_limite),
         horas_estimadas=parse_numero(horas_estimadas),
+        objetivo=parse_numero(objetivo),
+        unidad=unidad.strip()[:30],
     )
     db.add(meta)
     auditoria.registrar(db, usuario, "crear_meta", "meta", resumen=titulo)
@@ -1020,6 +1273,8 @@ def duplicar_meta(
         fecha_inicio=original.fecha_inicio,
         fecha_limite=original.fecha_limite,
         horas_estimadas=original.horas_estimadas or 0.0,
+        objetivo=original.objetivo or 0.0,
+        unidad=original.unidad,
         # La copia arranca siempre activa, aunque el original este cerrado.
         estado="activa",
     )
@@ -1078,6 +1333,8 @@ def meta_editar(
     fecha_inicio: str = Form(""),
     fecha_limite: str = Form(""),
     horas_estimadas: str = Form(""),
+    objetivo: str = Form(""),
+    unidad: str = Form(""),
     estado: str = Form("activa"),
 ):
     meta = db.get(Meta, meta_id)
@@ -1098,6 +1355,8 @@ def meta_editar(
     meta.fecha_inicio = parse_fecha(fecha_inicio)
     meta.fecha_limite = parse_fecha(fecha_limite)
     meta.horas_estimadas = parse_numero(horas_estimadas)
+    meta.objetivo = parse_numero(objetivo)
+    meta.unidad = unidad.strip()[:30]
     if estado in ESTADOS_META:
         meta.estado = estado
     auditoria.registrar(db, usuario, "editar_meta", "meta", meta.id, meta.titulo)
@@ -1176,6 +1435,8 @@ def resetear_pin(
     if error_pin:
         return ir_a("/equipo", error_pin)
     destino.pin_hash = hash_pin(pin)
+    # Corta la sesion que esa persona tuviera abierta con el PIN viejo.
+    destino.sesion_token = nuevo_token_de_sesion()
     olvidar_pin_de_fabrica(destino.id)
     if destino.usuario == config.ADMIN_USUARIO:
         borrar_primer_ingreso()
@@ -1257,6 +1518,12 @@ def persona_detalle(
             total_horas=totales["horas"],
             dias=totales["dias"],
             total_comentarios=totales["comentarios"],
+            puntualidad=puntualidad(
+                db,
+                usuario_id,
+                parse_fecha(desde) or date(2000, 1, 1),
+                parse_fecha(hasta) or date.today(),
+            ),
             mostrados=len(registros),
             limite=LIMITE_HISTORIAL,
             meses=reportes.MESES,
@@ -1368,6 +1635,100 @@ def auditoria_pagina(
     )
 
 
+# --------------------------------------------------------------------------
+# Novedades del equipo (vacaciones, licencias, feriados) - solo jefe
+# --------------------------------------------------------------------------
+@app.get("/novedades")
+def novedades_pagina(
+    request: Request,
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+):
+    """Dias en que no se le exige reportar a alguien.
+
+    Sin esto, quien esta de licencia o una semana con feriado aparece como
+    incumplidor en el panel.
+    """
+    return templates.TemplateResponse(
+        request,
+        "novedades.html",
+        contexto(
+            request,
+            usuario,
+            novedades=list(
+                db.scalars(
+                    select(Novedad)
+                    .options(*OPCIONES_NOVEDAD)
+                    .order_by(Novedad.desde.desc(), Novedad.id.desc())
+                )
+            ),
+            equipo=list(db.scalars(select(Usuario).order_by(Usuario.nombre))),
+            tipos=TIPOS_NOVEDAD,
+            etiquetas=dict(TIPOS_NOVEDAD),
+            hoy=date.today(),
+        ),
+    )
+
+
+@app.post("/novedades")
+def crear_novedad(
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+    usuario_id: str = Form(""),
+    tipo: str = Form("otro"),
+    desde: str = Form(""),
+    hasta: str = Form(""),
+    detalle: str = Form(""),
+):
+    id_persona = int(usuario_id) if usuario_id.isdigit() else None
+    if id_persona is not None and db.get(Usuario, id_persona) is None:
+        id_persona = None
+    if tipo not in {clave for clave, _ in TIPOS_NOVEDAD}:
+        return ir_a("/novedades", "Tipo de novedad inválido")
+
+    f_desde = parse_fecha(desde)
+    f_hasta = parse_fecha(hasta) or f_desde
+    if f_desde is None:
+        return ir_a("/novedades", "Poné desde cuándo es la novedad")
+    if f_hasta < f_desde:
+        return ir_a("/novedades", "La fecha de fin es anterior a la de inicio")
+
+    db.add(
+        Novedad(
+            usuario_id=id_persona,
+            tipo=tipo,
+            desde=f_desde,
+            hasta=f_hasta,
+            detalle=detalle.strip()[:140],
+        )
+    )
+    auditoria.registrar(
+        db,
+        usuario,
+        "crear_novedad",
+        "novedad",
+        resumen=f"{tipo}: {f_desde.isoformat()} a {f_hasta.isoformat()}",
+    )
+    db.commit()
+    return ir_a("/novedades", "Novedad cargada")
+
+
+@app.post("/novedades/{novedad_id}/eliminar")
+def eliminar_novedad(
+    novedad_id: int,
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+):
+    novedad = db.get(Novedad, novedad_id)
+    if novedad is None:
+        return ir_a("/novedades", "Esa novedad ya no existe")
+    resumen = f"{novedad.tipo}: {novedad.desde.isoformat()} a {novedad.hasta.isoformat()}"
+    db.delete(novedad)
+    auditoria.registrar(db, usuario, "eliminar_novedad", "novedad", novedad.id, resumen)
+    db.commit()
+    return ir_a("/novedades", "Novedad borrada")
+
+
 @app.get("/guia")
 def guia(request: Request, usuario: Usuario = Depends(requiere_login)):
     """Instructivo corto, pensado para que lo lea el equipo."""
@@ -1398,6 +1759,10 @@ def cambiar_mi_pin(
     if error_pin:
         return ir_a("/ayuda", error_pin)
     usuario.pin_hash = hash_pin(pin_nuevo)
+    # Se renueva el token para cortar otras sesiones, pero esta sigue viva: el
+    # que acaba de cambiar su propio PIN no tiene por que volver a entrar.
+    usuario.sesion_token = nuevo_token_de_sesion()
+    request.session["sesion_token"] = usuario.sesion_token
     olvidar_pin_de_fabrica(usuario.id)
     if usuario.usuario == config.ADMIN_USUARIO:
         borrar_primer_ingreso()
@@ -1478,6 +1843,99 @@ def restaurar_respaldo(
 
 
 # --------------------------------------------------------------------------
+# Informes por rango de fechas
+# --------------------------------------------------------------------------
+# Un informe de gestion no necesita mas que eso: pedir tres anos de registros
+# de una vez solo llenaria la memoria sin decir nada util.
+MAX_DIAS_INFORME = 1095
+
+
+def rango_informe(desde: str, hasta: str) -> tuple[date, date] | None:
+    """Fechas del informe a partir de lo que vino en la direccion.
+
+    Sin fechas se usa el mes en curso. Si vienen al reves se dan vuelta (es un
+    error de tipeo, no hace falta rechazarlo) y si el rango es enorme devuelve
+    None para que la ruta avise.
+    """
+    hoy = date.today()
+    inicio = parse_fecha(desde)
+    fin = parse_fecha(hasta)
+    if inicio is None and fin is None:
+        return hoy.replace(day=1), hoy
+    if inicio is None:
+        inicio = fin.replace(day=1)
+    if fin is None:
+        fin = max(hoy, inicio)
+    if fin < inicio:
+        inicio, fin = fin, inicio
+    if (fin - inicio).days + 1 > MAX_DIAS_INFORME:
+        return None
+    return inicio, fin
+
+
+@app.get("/reportes")
+def informes(
+    request: Request,
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+    desde: str = "",
+    hasta: str = "",
+    comparar: str = "",
+):
+    """Informe de un rango de fechas libre, con comparacion opcional."""
+    rango = rango_informe(desde, hasta)
+    if rango is None:
+        return ir_a("/reportes", "Rango de fechas demasiado largo")
+    inicio, fin = rango
+
+    quiere_comparar = comparar not in ("", "0")
+    parametros = f"desde={inicio.isoformat()}&hasta={fin.isoformat()}"
+    if quiere_comparar:
+        parametros += "&comparar=1"
+
+    return templates.TemplateResponse(
+        request,
+        "reportes.html",
+        contexto(
+            request,
+            usuario,
+            desde=inicio,
+            hasta=fin,
+            comparar=quiere_comparar,
+            resumen=reportes.resumen_periodo(db, inicio, fin),
+            comparacion=reportes.comparativa(db, inicio, fin) if quiere_comparar else None,
+            qs_pdf=parametros,
+            max_dias=MAX_DIAS_INFORME,
+        ),
+    )
+
+
+@app.get("/reportes/rango.pdf")
+def reporte_rango_pdf(
+    usuario: Usuario = Depends(requiere_jefe),
+    db: Session = Depends(get_db),
+    desde: str = "",
+    hasta: str = "",
+    comparar: str = "",
+):
+    """PDF del mismo informe de rango que se ve en pantalla."""
+    rango = rango_informe(desde, hasta)
+    if rango is None:
+        return ir_a("/reportes", "Rango de fechas demasiado largo")
+    inicio, fin = rango
+
+    pdf = reportes.generar_pdf_rango(
+        db, inicio, fin, comparar=comparar not in ("", "0")
+    )
+    nombre = f"informe_{inicio.isoformat()}_{fin.isoformat()}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
+# --------------------------------------------------------------------------
 # Reporte mensual en PDF
 # --------------------------------------------------------------------------
 @app.get("/reportes/mensual.pdf")
@@ -1502,6 +1960,34 @@ def reporte_mensual_pdf(
         content=pdf,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
+# --------------------------------------------------------------------------
+# Textos legales (públicos: se leen sin iniciar sesión)
+# --------------------------------------------------------------------------
+@app.get("/legal/{documento}")
+def legal(request: Request, documento: str):
+    """Política de privacidad, cookies, términos y licencia.
+
+    No depende del login a propósito: son las condiciones que hay que poder
+    leer antes de usar el sistema, y el pie de la pantalla de entrada apunta
+    acá.
+    """
+    titulos = dict(DOCUMENTOS_LEGALES)
+    if documento not in titulos:
+        raise HTTPException(status_code=404, detail="Ese documento no existe")
+    return templates.TemplateResponse(
+        request,
+        f"legal/{documento}.html",
+        contexto(
+            request,
+            None,
+            titulo=titulos[documento],
+            documento=documento,
+            version_legal=VERSION_LEGAL,
+            actualizado_legal=ACTUALIZADO_LEGAL,
+        ),
     )
 
 

@@ -1,0 +1,23 @@
+{% set etiqueta = revision_etiquetas.get(r.estado_revision, r.estado_revision) %}
+<span class="badge {{ r.estado_revision }}">{{ etiqueta }}</span>
+{% if r.observacion_revision %}
+<div class="observacion-revision">{{ r.observacion_revision }}</div>
+{% endif %}
+{% if r.revisado_por and r.revisado_en %}
+<div class="muted small">
+  {{ r.revisor.nombre if r.revisor else '—' }} · {{ r.revisado_en.strftime('%d/%m/%Y %H:%M') }}
+</div>
+{% endif %}
+{% if usuario.es_jefe %}
+<form method="post" action="/registros/{{ r.id }}/revisar" class="inline revision">
+  <input type="hidden" name="volver" value="{{ volver }}">
+  <select name="estado_revision">
+    <option value="aprobado" {% if r.estado_revision == 'aprobado' %}selected{% endif %}>Aprobar</option>
+    <option value="correccion_pendiente" {% if r.estado_revision == 'correccion_pendiente' %}selected{% endif %}>Devolver</option>
+  </select>
+  <input type="text" name="observacion" placeholder="Qué hay que corregir...">
+  <button type="submit" class="link">Guardar</button>
+</form>
+{% elif r.estado_revision == 'correccion_pendiente' and r.usuario_id == usuario.id %}
+<a class="link" href="/registros/{{ r.id }}/corregir">Corregir</a>
+{% endif %}

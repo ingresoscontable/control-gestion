@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block titulo %}Novedades · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<h1>Novedades del equipo</h1>
+<p class="sub">
+  Vacaciones, licencias y feriados. Los días que cargues acá <strong>no cuentan</strong>
+  para el cumplimiento y la persona deja de aparecer en <em>sin registrar</em>.
+  Los días laborables de referencia son <strong>{{ dias_laborables_txt }}</strong>.
+</p>
+
+<section class="card">
+  <h2>Nueva novedad</h2>
+  <form method="post" action="/novedades" class="form-grid">
+    <label>
+      Para
+      <select name="usuario_id">
+        <option value="">Todo el equipo</option>
+        {% for u in equipo %}
+        <option value="{{ u.id }}">{{ u.nombre }}{% if u.cargo %} ({{ u.cargo }}){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Tipo
+      <select name="tipo">
+        {% for clave, etiqueta in tipos %}
+        <option value="{{ clave }}">{{ etiqueta }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Desde
+      <input type="date" name="desde" value="{{ hoy.isoformat() }}" required>
+    </label>
+    <label>
+      Hasta (opcional)
+      <input type="date" name="hasta">
+    </label>
+    <label class="full">
+      Detalle (opcional)
+      <input type="text" name="detalle" placeholder="Ej: licencia por estudio">
+    </label>
+    <div class="full">
+      <button type="submit" class="btn primary">Cargar novedad</button>
+    </div>
+  </form>
+  <p class="muted small">
+    Si no ponés fecha de fin, la novedad es sólo del día de inicio. Elegí
+    <em>Todo el equipo</em> para un feriado.
+  </p>
+</section>
+
+<section class="card">
+  <h2>Cargadas</h2>
+  {% if novedades %}
+  <table class="tabla">
+    <thead>
+      <tr><th>Para</th><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Días</th><th>Detalle</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for n in novedades %}
+      <tr>
+        <td>{{ n.usuario.nombre if n.usuario else 'Todo el equipo' }}</td>
+        <td><span class="badge pendiente">{{ etiquetas.get(n.tipo, n.tipo) }}</span></td>
+        <td>{{ n.desde.strftime('%d/%m/%Y') }}</td>
+        <td>{{ n.hasta.strftime('%d/%m/%Y') }}</td>
+        <td>{{ (n.hasta - n.desde).days + 1 }}</td>
+        <td>{{ n.detalle or '—' }}</td>
+        <td>
+          <form method="post" action="/novedades/{{ n.id }}/eliminar"
+                onsubmit="return confirm('¿Borrar esta novedad?')">
+            <button type="submit" class="link danger">Borrar</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Todavía no hay novedades cargadas.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

@@ -42,6 +42,15 @@
         {% endfor %}
       </select>
     </label>
+    <label>
+      Revisión
+      <select name="revision">
+        <option value="">Todas</option>
+        {% for clave, etiqueta in estados_revision %}
+        <option value="{{ clave }}" {% if filtros.revision == clave %}selected{% endif %}>{{ etiqueta }}</option>
+        {% endfor %}
+      </select>
+    </label>
     <label class="ancho">
       Qué hizo (busca en el texto)
       <input type="search" name="texto" value="{{ filtros.texto or '' }}" placeholder="palabra o fragmento">
@@ -78,6 +87,8 @@
   <p class="muted small">
     Incluye el resumen general del mes, el resumen por persona, las metas del
     periodo y el detalle de los reportes diarios.
+    Para un rango de fechas libre (y compararlo con el período anterior), entrá a
+    <a href="/reportes">Informes</a>.
   </p>
 </section>
 
@@ -88,6 +99,14 @@
     filtros, repartidos en {{ paginas }} página(s) de {{ por_pagina }}.
     El Excel baja todos los filtrados.
   </p>
+  {% if total %}
+  <p class="muted small">
+    Cargados el mismo día en que se hizo el trabajo:
+    <strong>{{ total_en_fecha }}</strong> de {{ total }}
+    ({{ total_en_fecha * 100 // total }}%).
+    El resto se cargó con la fecha atrasada.
+  </p>
+  {% endif %}
 
   {% if paginas > 1 %}
   <nav class="paginacion">
@@ -104,7 +123,7 @@
   {% if registros %}
   <table class="tabla">
     <thead>
-      <tr><th>Fecha</th><th>Persona</th><th>Meta</th><th>Qué hizo</th><th>Horas</th><th>Estado</th><th>Comentario del jefe</th><th></th></tr>
+      <tr><th>Fecha</th><th>Persona</th><th>Meta</th><th>Qué hizo</th><th>Horas</th><th>Cantidad</th><th>Estado</th><th>Comentario del jefe</th><th>Revisión</th><th></th></tr>
     </thead>
     <tbody>
       {% for r in registros %}
@@ -114,6 +133,7 @@
         <td>{{ r.meta.titulo if r.meta else '—' }}</td>
         <td class="desc">{{ r.descripcion }}</td>
         <td>{{ '%.1f'|format(r.horas) }}</td>
+        <td>{{ '%.0f'|format(r.cantidad) if r.cantidad else '—' }}</td>
         <td><span class="badge {{ r.estado }}">{{ r.estado.replace('_', ' ') }}</span></td>
         <td class="comentario">
           {% if r.comentario %}
@@ -127,6 +147,10 @@
             <input type="text" name="comentario" value="{{ r.comentario or '' }}" placeholder="Observación...">
             <button type="submit" class="link">Guardar</button>
           </form>
+        </td>
+        <td class="revision">
+          {% set volver = '/registros?' ~ (qs ~ '&amp;' if qs else '') ~ 'page=' ~ pagina %}
+          {% include "_revision.html" %}
         </td>
         <td>
           <form method="post" action="/registros/{{ r.id }}/eliminar"

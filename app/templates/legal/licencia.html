@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }} · {{ APP_NAME }}{% endblock %}
+{% block contenido %}
+
+<article class="legal">
+  <h1>{{ titulo }}</h1>
+  <p class="muted small">
+    Versión {{ version_legal }} · Última actualización: {{ actualizado_legal }}
+  </p>
+
+  {% include "legal/_nav.html" %}
+
+  <p>
+    <strong>Resumen en una línea:</strong> el programa es libre y gratuito bajo
+    licencia MIT. Cualquiera puede copiarlo, usarlo, modificarlo y compartirlo
+    —incluso en otras divisiones u organismos, sin pagar nada— conservando el
+    aviso de autoría.
+  </p>
+
+  <h2>1. Qué permite la licencia</h2>
+  <ul>
+    <li>Usar el programa para cualquier fin, incluido el uso interno de una repartición.</li>
+    <li>Copiarlo, instalarlo en tantas computadoras como haga falta y hacer copias de resguardo.</li>
+    <li>Estudiarlo, modificarlo y adaptarlo a otro proceso o a otra área.</li>
+    <li>Compartirlo con otras divisiones u organismos, de forma gratuita.</li>
+    <li>Publicar versiones mejoradas, también sin costo para quien las reciba.</li>
+  </ul>
+
+  <h2>2. Qué obliga la licencia</h2>
+  <ul>
+    <li>
+      Conservar el <strong>aviso de copyright</strong> y el texto de la licencia
+      en las copias del programa y en las versiones derivadas.
+    </li>
+    <li>No hay obligación de pagar, registrar ni pedir autorización previa.</li>
+    <li>No hay obligación de publicar tus mejoras (la licencia no es "viral").</li>
+  </ul>
+
+  <h2>3. Qué no garantiza</h2>
+  <p>
+    El programa se entrega <strong>tal cual</strong>, sin garantía de ningún
+    tipo: ni de funcionamiento, ni de que sirva para un fin determinado, ni de
+    que no se pierdan datos. Quienes lo escribieron no responden por daños o
+    perjuicios derivados de su uso. <strong>Hacé y guardá respaldos.</strong>
+  </p>
+
+  <h2>4. Texto de la licencia</h2>
+  <div class="card">
+    <pre>MIT License
+
+Copyright (c) 2026 Control de Gestion - contribuyentes del proyecto
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</pre>
+  </div>
+  <p class="muted small">
+    El archivo <code>LICENSE</code> en la raíz del repositorio contiene este
+    mismo texto. Si preferís que la titularidad figure a tu nombre o al de tu
+    institución, solo hay que reemplazar la línea de copyright.
+  </p>
+
+  <h2>5. Respaldo legal adicional</h2>
+  <p>
+    La licencia protege a quienes comparten el programa, pero no regula el
+    tratamiento de los datos de las personas ni el uso de la herramienta como
+    parte de un proceso interno. Para eso están los
+    <a href="/legal/terminos">Términos y Condiciones</a> y la
+    <a href="/legal/privacidad">Política de Privacidad</a>, que deben revisarse
+    con el área legal del organismo antes de usar el sistema en producción.
+  </p>
+</article>
+
+{% endblock %}

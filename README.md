@@ -358,6 +358,7 @@ control-gestion/
 │   ├── templates/          # páginas HTML
 │   │   └── legal/          # privacidad, cookies, términos y licencia
 │   └── static/style.css
+├── docs/historicos/        # documentos cerrados, con la fecha en el nombre
 ├── tests/                  # pruebas automáticas
 └── data/control.db         # la base de datos (se crea sola)
 ```

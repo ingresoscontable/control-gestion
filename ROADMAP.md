@@ -1,7 +1,8 @@
 # Roadmap — Control de Gestión
 
 Documento de trabajo: qué se mejora, en qué orden y con qué criterio se da por terminada
-cada fase. Sale del mapeo del sistema hecho el 27/09/2026.
+cada fase. Sale del mapeo del sistema hecho el 27/09/2026 (el informe y la revisión
+completos quedaron cerrados en [`docs/historicos/`](docs/historicos/)).
 
 **Regla de oro:** en cada fase se cierra con la suite verde (`pytest tests -q`), `ruff`
 sin errores y la documentación (README / GUIA-ANALISTAS.md) actualizada si cambió algo
